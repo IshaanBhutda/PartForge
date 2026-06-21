@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PartForge — Gear & Gearbox Generator</title>
+<style>
+  :root{
+    color-scheme: light;
+    --parchment:#ede0d4; --panel:#e7d6c5; --panel2:#f3e9dd;
+    --line:#cdb89f; --ink:#3a2c22; --ink-soft:#6b5645;
+    --clay:#9c6644; --clay-d:#7f5539; --olive:#606c38; --olive-d:#3f4a25;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font:14px/1.5 "Iowan Old Style","Palatino Linotype",Georgia,serif;color:var(--ink);
+    background:var(--parchment);display:flex;min-height:100vh}
+  .sidebar{width:344px;min-width:344px;padding:18px 18px 28px;overflow-y:auto;
+    background:linear-gradient(180deg,#efe4d8,#e3d0bd);border-right:1px solid var(--line)}
+  .brand{display:flex;align-items:baseline;gap:8px}
+  .brand h1{font-size:23px;margin:0;letter-spacing:.5px;color:var(--clay-d)}
+  .brand span{font-size:11px;color:var(--ink-soft);letter-spacing:2px;text-transform:uppercase}
+  .byline{font-size:12px;color:var(--ink-soft);margin:3px 0 0}
+  .byline a{color:var(--clay-d);text-decoration:none;border-bottom:1px solid var(--line)}
+  .byline a:hover{color:var(--clay);border-color:var(--clay)}
+  .tag{font-size:12px;color:var(--ink-soft);margin:4px 0 14px}
+  .tabs{display:flex;gap:5px;margin-bottom:14px}
+  .tab{flex:1;padding:8px 4px;border:1px solid var(--line);border-radius:9px;background:var(--panel2);
+    color:var(--ink-soft);font-weight:600;font-size:12px;text-align:center;cursor:pointer;line-height:1.2}
+  .tab.active{background:var(--clay-d);color:#f6ecdf;border-color:var(--clay-d)}
+  button{font:inherit;cursor:pointer}
+  .label{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--olive-d);margin:16px 0 8px;font-weight:700}
+  .types{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+  .types.two{grid-template-columns:1fr 1fr}
+  .type{padding:9px 4px;border:1px solid var(--line);border-radius:9px;background:var(--panel2);
+    color:var(--ink-soft);font-size:11.5px;text-align:center;line-height:1.2}
+  .type b{display:block;font-size:17px;margin-bottom:2px}
+  .type.active{background:var(--olive);color:#f4efe2;border-color:var(--olive-d)}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0}
+  .row label{font-size:12.5px;color:var(--ink-soft)}
+  .row input[type=number]{width:88px;padding:6px 8px;border:1px solid var(--line);border-radius:7px;
+    background:var(--panel2);color:var(--ink);font:inherit;font-size:13px;text-align:right}
+  .row input:focus{outline:none;border-color:var(--clay)}
+  .info{margin-top:12px;padding:11px 12px;border-radius:9px;background:rgba(96,108,56,.10);
+    border:1px solid rgba(96,108,56,.30);font-size:12px;color:var(--olive-d)}
+  .info b{color:var(--ink)} .info .big{font-size:15px;color:var(--clay-d)}
+  .seg{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px}
+  .seg button{flex:1;min-width:60px;padding:7px 4px;border:1px solid var(--line);border-radius:8px;
+    background:var(--panel2);color:var(--ink-soft);font-size:12px}
+  .seg button.active{background:var(--olive);color:#f4efe2;border-color:var(--olive-d)}
+  .dlrow{display:flex;gap:8px;margin-top:10px}
+  .dl{flex:1;padding:10px 8px;border:none;border-radius:9px;font-weight:600;font-size:12.5px;text-align:center}
+  .dl-stl{background:var(--clay-d);color:#f6ecdf} .dl-stl:hover{background:var(--clay)}
+  .dl-print{background:var(--olive);color:#f4efe2} .dl-print:hover{background:var(--olive-d)}
+  .tolbox{margin-top:10px;padding:10px 12px;border:1px dashed var(--line);border-radius:9px;background:rgba(156,102,68,.06)}
+  .tolbox .label{margin:0 0 6px}
+  .ghost{background:transparent;border:1px solid var(--line);color:var(--ink-soft);border-radius:8px;padding:8px 10px;font-size:12px}
+  .ghost:hover{border-color:var(--clay);color:var(--clay-d)}
+  .viewbtns{display:flex;gap:8px;margin-top:12px}
+  .credit{margin-top:18px;font-size:10.5px;color:var(--ink-soft);opacity:.85;line-height:1.5}
+  .stage{flex:1;position:relative;min-width:0}
+  canvas{display:block;width:100%;height:100%;cursor:grab}
+  canvas:active{cursor:grabbing}
+  .hint{position:absolute;left:16px;bottom:14px;font-size:11px;color:var(--ink-soft);opacity:.8;pointer-events:none}
+  @media (max-width:760px){body{flex-direction:column}.sidebar{width:100%;min-width:0}.stage{height:52vh}}
+</style>
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand"><h1>PartForge</h1><span>gear bench</span></div>
+    <div class="byline">Designed by <a href="https://www.linkedin.com/in/ishaanbhutda/" target="_blank" rel="noopener">Ishaan Bhutda</a></div>
+    <p class="tag" id="tag"></p>
+
+    <div class="tabs">
+      <div class="tab active" data-mode="gear">Single Gear</div>
+      <div class="tab" data-mode="planetary">Planetary</div>
+      <div class="tab" data-mode="cycloidal">Cycloidal</div>
+    </div>
+
+    <div id="panel"></div>
+
+    <div class="tolbox">
+      <div class="label">3D-print clearances (mm)</div>
+      <div class="row"><label>Bore clearance (+Ø)</label><input type="number" id="tolBore" step="0.05" value="0.40"></div>
+      <div class="row"><label>Tooth / OD clearance</label><input type="number" id="tolDia" step="0.05" value="0.30"></div>
+    </div>
+
+    <div class="dlrow">
+      <button class="dl dl-stl" id="dlStl">Download STL</button>
+      <button class="dl dl-print" id="dlPrint">3D-print STL</button>
+    </div>
+    <div class="viewbtns">
+      <button class="ghost" id="spin" style="flex:1">Spin</button>
+      <button class="ghost" id="reset" style="flex:1">Reset view</button>
+    </div>
+
+    <div class="credit">
+      True involute flanks · helical &amp; herringbone twist · internal ring gears · planetary sizing from a
+      target ratio · cycloidal disc from parametric equations. The 3D-print copy enlarges the bore and trims
+      OD/teeth by the clearances above. Exports STL for any slicer or CAD — ask in chat for a precise STEP solid.
+    </div>
+  </aside>
+
+  <main class="stage">
+    <canvas id="cv"></canvas>
+    <div class="hint">drag to orbit · scroll to zoom</div>
+  </main>
+
+<!-- ===== geometry engine (tested) ===== -->
+<script>
+// ============================================================
+//  PartForge geometry engine v2 — gears + planetary gearbox.
+//  Mesh = { verts:[[x,y,z]], faces:[[i,j,k]] }
+// ============================================================
+(function (root) {
+  const TAU = Math.PI * 2;
+  const M = () => ({ verts: [], faces: [] });
+  const V = (m, x, y, z) => (m.verts.push([x, y, z]), m.verts.length - 1);
+  const Q = (m, a, b, c, d) => { m.faces.push([a, b, c]); m.faces.push([a, c, d]); };
+  const T = (m, a, b, c) => m.faces.push([a, b, c]);
+
+  function merge() {
+    const o = M();
+    for (const m of arguments) {
+      const off = o.verts.length;
+      for (const v of m.verts) o.verts.push(v.slice());
+      for (const f of m.faces) o.faces.push([f[0] + off, f[1] + off, f[2] + off]);
+    }
+    return o;
+  }
+  function translate(m, dx, dy, dz) { for (const v of m.verts) { v[0] += dx; v[1] += dy; v[2] += dz; } return m; }
+  function rotZ(m, a) { const c = Math.cos(a), s = Math.sin(a); for (const v of m.verts) { const x = v[0], y = v[1]; v[0] = x * c - y * s; v[1] = x * s + y * c; } return m; }
+
+  // ---- external involute gear cross-section (clearance-aware) ----
+  function gearProfile(p) {
+    const m = p.module, z = p.teeth;
+    const alpha = (p.pressureAngle || 20) * Math.PI / 180;
+    const aCo = p.addendum ?? 1.0, dCo = p.dedendum ?? 1.25;
+    const N = Math.max(4, p.ptsPerFlank || 10);
+    const dia = p.diaClearance || 0;                 // shrink OD + thin teeth
+    const rp = m * z / 2, rb = rp * Math.cos(alpha);
+    const ra = rp + aCo * m - dia / 2, rf = rp - dCo * m;
+    const invA = Math.tan(alpha) - alpha;
+    const thin = dia / (2 * rp);
+    const beta0 = Math.PI / (2 * z) + invA - thin;
+    const theta = (r) => { const rr = Math.max(r, rb); const ar = Math.acos(Math.min(1, rb / rr)); return beta0 - (Math.tan(ar) - ar); };
+    const rlo = Math.max(rf, rb), radii = [];
+    if (rf < rb) radii.push(rf);
+    for (let k = 0; k < N; k++) radii.push(rlo + (ra - rlo) * k / (N - 1));
+    const pts = [], step = TAU / z, tTip = theta(ra), tRoot = theta(rf);
+    for (let i = 0; i < z; i++) {
+      const phi = i * step;
+      for (const r of radii) { const a = phi - theta(r); pts.push([r * Math.cos(a), r * Math.sin(a)]); }
+      for (let t = 1; t <= 4; t++) { const a = (phi - tTip) + 2 * tTip * t / 4; pts.push([ra * Math.cos(a), ra * Math.sin(a)]); }
+      for (let k = radii.length - 1; k >= 0; k--) { const r = radii[k], a = phi + theta(r); pts.push([r * Math.cos(a), r * Math.sin(a)]); }
+      const a0 = phi + tRoot, a1 = phi + step - tRoot;
+      for (let t = 1; t <= 3; t++) { const a = a0 + (a1 - a0) * t / 4; pts.push([rf * Math.cos(a), rf * Math.sin(a)]); }
+    }
+    return { pts, rp, ra, rf, rb };
+  }
+
+  // ---- internal (ring) gear inner boundary, via pitch-circle reflection ----
+  function ringInner(p) {
+    const base = gearProfile({ module: p.module, teeth: p.teeth, pressureAngle: p.pressureAngle, ptsPerFlank: p.ptsPerFlank });
+    const rp = base.rp, m = p.module, dCo = p.dedendum ?? 1.25, aCo = p.addendum ?? 1.0;
+    const dia = p.diaClearance || 0;
+    const inner = base.pts.map(([x, y]) => {
+      const r = Math.hypot(x, y), a = Math.atan2(y, x);
+      const r2 = (2 * rp - r) + dia / 2;            // reflect inside + clearance outward
+      return [r2 * Math.cos(a), r2 * Math.sin(a)];
+    });
+    const tip = rp - aCo * m, root = rp + dCo * m;
+    return { inner, rp, tip, root };
+  }
+
+  // ---- extrude between an outer loop and an optional inner loop ----
+  function extrudeBetween(outer2d, inner2d, opts) {
+    const face = opts.face, L = Math.max(1, opts.layers || 1), tw = opts.twistFn || (() => 0);
+    const n = outer2d.length, m = M(), O = [], I = [];
+    const hasInner = !!inner2d;
+    for (let li = 0; li <= L; li++) {
+      const t = li / L, zc = face * t, rot = tw(t), c = Math.cos(rot), s = Math.sin(rot);
+      const oR = [], iR = [];
+      for (let i = 0; i < n; i++) {
+        const x = outer2d[i][0], y = outer2d[i][1];
+        oR.push(V(m, x * c - y * s, x * s + y * c, zc));
+        if (hasInner) { const xi = inner2d[i][0], yi = inner2d[i][1]; iR.push(V(m, xi * c - yi * s, xi * s + yi * c, zc)); }
+      }
+      O.push(oR); I.push(iR);
+    }
+    for (let li = 0; li < L; li++) for (let i = 0; i < n; i++) { const j = (i + 1) % n; Q(m, O[li][i], O[li][j], O[li + 1][j], O[li + 1][i]); }
+    if (hasInner) {
+      for (let li = 0; li < L; li++) for (let i = 0; i < n; i++) { const j = (i + 1) % n; Q(m, I[li][i], I[li + 1][i], I[li + 1][j], I[li][j]); }
+      for (let i = 0; i < n; i++) { const j = (i + 1) % n; Q(m, O[0][j], O[0][i], I[0][i], I[0][j]); Q(m, O[L][i], O[L][j], I[L][j], I[L][i]); }
+    } else {
+      const cB = V(m, 0, 0, 0), cT = V(m, 0, 0, face);
+      for (let i = 0; i < n; i++) { const j = (i + 1) % n; T(m, cB, O[0][j], O[0][i]); T(m, cT, O[L][i], O[L][j]); }
+    }
+    return m;
+  }
+
+  function twistFor(kind, helixDeg, face, rp) {
+    const helix = (helixDeg || 0) * Math.PI / 180;
+    const total = Math.tan(helix) * face / rp;
+    if (kind === 'helical') return { layers: Math.max(2, Math.ceil(Math.abs(total) / 0.18)), fn: (t) => total * t };
+    if (kind === 'herringbone') return { layers: Math.max(4, 2 * Math.ceil(Math.abs(total) / 0.18)), fn: (t) => total * (t < 0.5 ? t : 1 - t) };
+    return { layers: 1, fn: () => 0 };
+  }
+
+  function buildGear(p) {
+    const prof = gearProfile(p);
+    const tw = twistFor(p.kind || 'spur', p.helixAngle, p.face, prof.rp);
+    let inner = null;
+    const bore = (p.bore || 0) + (p.bore > 0 ? (p.boreClearance || 0) : 0);
+    if (bore > 0) {
+      const br = bore / 2;
+      inner = prof.pts.map(([x, y]) => { const a = Math.atan2(y, x); return [br * Math.cos(a), br * Math.sin(a)]; });
+    }
+    const mesh = extrudeBetween(prof.pts, inner, { face: p.face, layers: tw.layers, twistFn: tw.fn });
+    mesh.info = { type: (p.kind || 'spur') + ' gear', teeth: p.teeth, module: p.module,
+      pitchDia: +(p.module * p.teeth).toFixed(2), outerDia: +(2 * prof.ra).toFixed(2), bore: +bore.toFixed(2) };
+    return mesh;
+  }
+
+  function buildRing(p) {
+    const ri = ringInner(p);
+    const rim = ri.root + (p.rim || 2 * p.module);          // outer rim radius
+    const tw = twistFor(p.kind || 'spur', p.helixAngle, p.face, ri.rp);
+    const outer = ri.inner.map(([x, y]) => { const a = Math.atan2(y, x); return [rim * Math.cos(a), rim * Math.sin(a)]; });
+    const mesh = extrudeBetween(outer, ri.inner, { face: p.face, layers: tw.layers, twistFn: tw.fn });
+    mesh.info = { type: (p.kind || 'spur') + ' ring gear', teeth: p.teeth, module: p.module,
+      pitchDia: +(p.module * p.teeth).toFixed(2), rimDia: +(2 * rim).toFixed(2) };
+    return mesh;
+  }
+
+  // ---- planetary ratio solver (ring fixed, sun in, carrier out: i = 1 + R/S) ----
+  function solvePlanetary(target, N, opts) {
+    opts = opts || {};
+    const sMin = opts.sMin || 10, sMax = opts.sMax || 40, pMin = opts.pMin || 9, pMax = opts.pMax || 60;
+    let best = null;
+    for (let S = sMin; S <= sMax; S++) {
+      for (let P = pMin; P <= pMax; P++) {
+        const R = S + 2 * P;
+        if ((S + R) % N !== 0) continue;                       // equal-spacing condition
+        const neighbor = (S + P) * Math.sin(Math.PI / N) > (P + 2.2); // no planet collision
+        if (!neighbor) continue;
+        const ratio = 1 + R / S;
+        const err = Math.abs(ratio - target);
+        const score = err * 1000 + (S + P) * 0.01;             // prefer accuracy, then compactness
+        if (!best || score < best.score) best = { S, P, R, N, ratio: +ratio.toFixed(4), err: +err.toFixed(4), score };
+      }
+    }
+    return best;
+  }
+
+  function buildPlanetary(p) {
+    const sol = p.solution;                                    // {S,P,R,N}
+    const m = p.module, kind = p.kind || 'spur';
+    const common = { module: m, pressureAngle: p.pressureAngle || 20, face: p.face, kind,
+      helixAngle: p.helixAngle, ptsPerFlank: p.ptsPerFlank, diaClearance: p.diaClearance || 0 };
+    const sun = buildGear(Object.assign({ teeth: sol.S, bore: p.sunBore || 0, boreClearance: p.boreClearance || 0 }, common));
+    const planet0 = buildGear(Object.assign({ teeth: sol.P, bore: p.planetBore || 0, boreClearance: p.boreClearance || 0 }, common));
+    const ring = buildRing(Object.assign({ teeth: sol.R, rim: p.rim }, common));
+    return { sun, planet: planet0, ring, sol };
+  }
+
+  // assemble planetary parts into one mesh laid out as a gearbox
+  function assemblePlanetary(parts, p) {
+    const m = p.module, S = parts.sol.S, P = parts.sol.P, N = parts.sol.N;
+    const rc = m * (S + P) / 2;                                // carrier radius
+    const out = [];
+    out.push(parts.sun);                                       // sun at center
+    // ring, phase-aligned so a tooth space faces a planet
+    const ring = JSON.parse(JSON.stringify(parts.ring));
+    rotZ(ring, Math.PI / parts.sol.R);
+    out.push(ring);
+    for (let k = 0; k < N; k++) {
+      const phi = k * TAU / N;
+      const pl = JSON.parse(JSON.stringify(parts.planet));
+      // approximate meshing phase so teeth interleave
+      rotZ(pl, -(S / P) * phi + (P % 2 ? Math.PI / P : 0));
+      translate(pl, rc * Math.cos(phi), rc * Math.sin(phi), 0);
+      out.push(pl);
+    }
+    return merge.apply(null, out);
+  }
+
+  // ---- primitives for cycloidal drive ----
+  function circlePts(r, n) { const a = []; for (let i = 0; i < n; i++) { const t = TAU * i / n; a.push([r * Math.cos(t), r * Math.sin(t)]); } return a; }
+  function cylinder(r, z0, z1, segs) {
+    const m = M(), bot = [], top = [];
+    for (let i = 0; i < segs; i++) { const a = TAU * i / segs; bot.push(V(m, r * Math.cos(a), r * Math.sin(a), z0)); top.push(V(m, r * Math.cos(a), r * Math.sin(a), z1)); }
+    for (let i = 0; i < segs; i++) { const j = (i + 1) % segs; Q(m, bot[i], bot[j], top[j], top[i]); }
+    const cB = V(m, 0, 0, z0), cT = V(m, 0, 0, z1);
+    for (let i = 0; i < segs; i++) { const j = (i + 1) % segs; T(m, cB, bot[j], bot[i]); T(m, cT, top[i], top[j]); }
+    return m;
+  }
+  function tube(rOut, rIn, face, n) { return extrudeBetween(circlePts(rOut, n), circlePts(rIn, n), { face }); }
+
+  // cycloidal disc profile — exact match to the user's MATLAB (single-argument atan)
+  //   psi = atan( sin((N-1)t) / ( cos((N-1)t) - R/(N*e) ) )
+  //   x =  R cos t - r cos(t+psi) - e cos(N t)
+  //   y = -R sin t + r sin(t+psi) + e sin(N t)
+  function cycloidProfile(p) {
+    const R = p.R, r = p.r, N = p.N, e = p.e, steps = p.steps || 720, pts = [];
+    for (let i = 0; i < steps; i++) {
+      const t = TAU * i / steps;
+      const psi = Math.atan(Math.sin((N - 1) * t) / (Math.cos((N - 1) * t) - R / (N * e)));
+      const x = R * Math.cos(t) - r * Math.cos(t + psi) - e * Math.cos(N * t);
+      const y = -R * Math.sin(t) + r * Math.sin(t + psi) + e * Math.sin(N * t);
+      pts.push([x, y]);
+    }
+    return pts;
+  }
+  function shrinkRadial(pts, d) { return pts.map(([x, y]) => { const r = Math.hypot(x, y) || 1, k = (r - d) / r; return [x * k, y * k]; }); }
+
+  // ===== validity: a disc is acceptable only if its boundary is a simple,
+  //       star-shaped curve (polar angle strictly monotonic). Undercut /
+  //       self-intersection (pin radius or eccentricity too large) -> invalid,
+  //       mirroring SolidWorks' "invalid geometry" rejection. =====
+  function segInt(p1, p2, p3, p4) {
+    const d1x = p2[0] - p1[0], d1y = p2[1] - p1[1], d2x = p4[0] - p3[0], d2y = p4[1] - p3[1];
+    const den = d1x * d2y - d1y * d2x; if (Math.abs(den) < 1e-12) return false;
+    const t = ((p3[0] - p1[0]) * d2y - (p3[1] - p1[1]) * d2x) / den;
+    const u = ((p3[0] - p1[0]) * d1y - (p3[1] - p1[1]) * d1x) / den;
+    return t > 1e-9 && t < 1 - 1e-9 && u > 1e-9 && u < 1 - 1e-9;
+  }
+  function selfIntersects(pts) {
+    const n = pts.length;
+    for (let i = 0; i < n; i++) {
+      const a1 = pts[i], a2 = pts[(i + 1) % n];
+      for (let j = i + 2; j < n; j++) {
+        if (i === 0 && j === n - 1) continue;            // adjacent across the seam
+        if (segInt(a1, a2, pts[j], pts[(j + 1) % n])) return true;
+      }
+    }
+    return false;
+  }
+  function segX(p1, p2, p3, p4) {
+    const d1x = p2[0] - p1[0], d1y = p2[1] - p1[1], d2x = p4[0] - p3[0], d2y = p4[1] - p3[1];
+    const den = d1x * d2y - d1y * d2x; if (Math.abs(den) < 1e-12) return null;
+    const t = ((p3[0] - p1[0]) * d2y - (p3[1] - p1[1]) * d2x) / den;
+    const u = ((p3[0] - p1[0]) * d1y - (p3[1] - p1[1]) * d1x) / den;
+    if (t > 1e-9 && t < 1 - 1e-9 && u > 1e-9 && u < 1 - 1e-9) return [p1[0] + t * d1x, p1[1] + t * d1y];
+    return null;
+  }
+  // The raw parametric equation overshoots into a small loop at each lobe tip.
+  // Trimming those loops to their crossing point gives the *physical* boundary —
+  // the curve that actually prints / meshes (matches a working printed disc).
+  function trimLoops(pts) {
+    const n = pts.length;
+    // start mid-flank (radius nearest the median) — never inside a tip/valley loop, so no loop spans the seam
+    const rad = pts.map(q => Math.hypot(q[0], q[1])); const sorted = rad.slice().sort((a, b) => a - b);
+    const med = sorted[n >> 1]; let mi = 0, best = Infinity;
+    for (let k = 0; k < n; k++) { const d = Math.abs(rad[k] - med); if (d < best) { best = d; mi = k; } }
+    const p = pts.slice(mi).concat(pts.slice(0, mi));
+    const out = []; let i = 0; const maxGap = Math.max(6, Math.floor(n / 6));
+    while (i < n) {
+      let jumped = false; const a1 = p[i], a2 = p[(i + 1) % n];
+      for (let g = 2; g <= maxGap && i + g < n; g++) {
+        const X = segX(a1, a2, p[i + g], p[(i + g + 1) % n]);
+        if (X) { out.push(a1); out.push(X); i = i + g + 1; jumped = true; break; }
+      }
+      if (!jumped) { out.push(p[i]); i++; }
+    }
+    return out;
+  }
+  function cycDiscProfile(p) {
+    let pts = cycloidProfile({ R: p.R, r: p.r, N: p.N, e: p.e, steps: p.steps || 540 });
+    for (let pass = 0; pass < 6; pass++) { pts = trimLoops(pts); if (!selfIntersects(pts)) break; }
+    return pts;
+  }
+  // number of lobes = significant radial maxima (a correct cycloidal disc has exactly N-1)
+  function countLobes(pts) {
+    const n = pts.length, rad = pts.map(q => Math.hypot(q[0], q[1]));
+    let rmin = Infinity, rmax = 0; for (const v of rad) { if (v < rmin) rmin = v; if (v > rmax) rmax = v; }
+    const mid = rmin + 0.45 * (rmax - rmin); let c = 0;
+    for (let i = 0; i < n; i++) { const a = rad[(i - 1 + n) % n], b = rad[i], cc = rad[(i + 1) % n]; if (b >= a && b > cc && b > mid) c++; }
+    return c;
+  }
+
+  // valid = the (loop-trimmed) boundary is a simple closed curve. Inputs whose lobes
+  // overlap so badly they can't be trimmed are reported invalid, like SolidWorks.
+  function cycValidity(p) {
+    if (!(p.R > 0)) return { ok: false, reason: 'pin-circle Ø must be > 0' };
+    if (!(p.e > 0)) return { ok: false, reason: 'eccentricity must be > 0' };
+    if (!(p.N >= 3)) return { ok: false, reason: 'need ratio ≥ 2 (pins ≥ 3)' };
+    if (!(p.r > 0)) return { ok: false, reason: 'pin Ø must be > 0' };
+    const pts = cycDiscProfile({ R: p.R, r: p.r, N: p.N, e: p.e, steps: p.steps || 360 });
+    let rmin = Infinity, rmax = 0;
+    for (const [x, y] of pts) { const rr = Math.hypot(x, y); if (rr < rmin) rmin = rr; if (rr > rmax) rmax = rr; }
+    if (!(rmin > 0.05)) return { ok: false, reason: 'profile collapses to the centre — reduce eccentricity', rmin, rmax };
+    if (pts.length < p.N * 2) return { ok: false, reason: 'degenerate profile — adjust parameters', rmin, rmax };
+    if (selfIntersects(pts)) return { ok: false, reason: 'lobes overlap and cannot be trimmed — reduce pin Ø or eccentricity', rmin, rmax };
+    const lobes = countLobes(pts);
+    if (lobes !== p.N - 1) return { ok: false, reason: 'lobes merge at these values (' + lobes + '/' + (p.N - 1) + ') — reduce pin Ø or eccentricity', rmin, rmax, lobes };
+    return { ok: true, reason: 'valid cycloidal profile', rmin, rmax, lobes };
+  }
+  // largest valid pin radius (undercut limit) for the other fixed params
+  function cycMaxPinR(p) {
+    const test = (r) => cycValidity({ R: p.R, r, N: p.N, e: p.e, steps: 280 }).ok;
+    if (!test(0.1)) return 0;
+    let last = 0;
+    for (let r = 0.2; r <= p.R * 2; r += Math.max(0.1, p.R * 0.01)) { if (test(r)) last = r; else break; }
+    // refine
+    let lo = last, hi = last + Math.max(0.1, p.R * 0.01);
+    for (let i = 0; i < 22; i++) { const m = (lo + hi) / 2; if (test(m)) lo = m; else hi = m; }
+    return lo;
+  }
+  // valid eccentricity window for the other fixed params
+  function cycEccRange(p) {
+    const test = (e) => e > 0 && cycValidity({ R: p.R, r: p.r, N: p.N, e, steps: 280 }).ok;
+    let emin = null, emax = null;
+    for (let e = 0.05; e <= p.R; e += Math.max(0.05, p.R * 0.004)) {
+      if (test(e)) { if (emin === null) emin = e; emax = e; } else if (emin !== null) break;
+    }
+    return { emin, emax };
+  }
+  // placement ranges for output pin holes (bolt circle + hole Ø + count)
+  function cycHoleRanges(p) {
+    const pol = cycValidity({ R: p.R, r: p.r, N: p.N, e: p.e, steps: 360 });
+    const rminDisc = pol.rmin || 0, wall = p.wall || 1.2, br = (p.bore || 0) / 2;
+    const Np = Math.max(1, p.outCount || 6), rh = (p.outHoleDia || 0) / 2, rc = (p.outCircleDia || 0) / 2;
+    const circleMin = 2 * (br + rh + wall), circleMax = 2 * (rminDisc - rh - wall);
+    const holeMax = Math.min((rc - br - wall) * 2, (rminDisc - rc - wall) * 2,
+      Np > 1 ? (2 * rc * Math.sin(Math.PI / Np) - wall) : Infinity);
+    const countMax = rc > 0 ? Math.max(1, Math.floor(Math.PI / Math.asin(Math.min(0.999, ((p.outHoleDia || 0) + wall) / (2 * rc))))) : 24;
+    return { rminDisc, circleMin: +circleMin.toFixed(2), circleMax: +circleMax.toFixed(2), holeMax: +Math.max(0, holeMax).toFixed(2), countMax, wall };
+  }
+
+  // ---- ear-clipping triangulation with holes (Mapbox earcut, MIT, trimmed) ----
+  function earcut(data, holeIndices, dim) {
+    dim = dim || 2;
+    const hasHoles = holeIndices && holeIndices.length, outerLen = hasHoles ? holeIndices[0] * dim : data.length;
+    let outerNode = ecLinkedList(data, 0, outerLen, dim, true);
+    const triangles = [];
+    if (!outerNode || outerNode.next === outerNode.prev) return triangles;
+    if (hasHoles) outerNode = ecEliminateHoles(data, holeIndices, outerNode, dim);
+    ecEarcutLinked(outerNode, triangles, dim, 0);
+    return triangles;
+  }
+  function ecLinkedList(data, start, end, dim, clockwise) {
+    let i, last;
+    if (clockwise === (ecSignedArea(data, start, end, dim) > 0)) { for (i = start; i < end; i += dim) last = ecInsert(i, data[i], data[i + 1], last); }
+    else { for (i = end - dim; i >= start; i -= dim) last = ecInsert(i, data[i], data[i + 1], last); }
+    if (last && ecEquals(last, last.next)) { ecRemove(last); last = last.next; }
+    return last;
+  }
+  function ecFilter(start, end) {
+    if (!start) return start; if (!end) end = start;
+    let p = start, again;
+    do { again = false; if (!p.steiner && (ecEquals(p, p.next) || ecArea(p.prev, p, p.next) === 0)) { ecRemove(p); p = end = p.prev; if (p === p.next) break; again = true; } else p = p.next; } while (again || p !== end);
+    return end;
+  }
+  function ecEarcutLinked(ear, triangles, dim, pass) {
+    if (!ear) return; let stop = ear, prev, next;
+    while (ear.prev !== ear.next) {
+      prev = ear.prev; next = ear.next;
+      if (ecIsEar(ear)) { triangles.push(prev.i / dim | 0, ear.i / dim | 0, next.i / dim | 0); ecRemove(ear); ear = next.next; stop = next.next; continue; }
+      ear = next;
+      if (ear === stop) {
+        if (!pass) ecEarcutLinked(ecFilter(ear), triangles, dim, 1);
+        else if (pass === 1) { ear = ecCure(ecFilter(ear), triangles, dim); ecEarcutLinked(ear, triangles, dim, 2); }
+        else if (pass === 2) ecSplit(ear, triangles, dim);
+        break;
+      }
+    }
+  }
+  function ecIsEar(ear) {
+    const a = ear.prev, b = ear, c = ear.next;
+    if (ecArea(a, b, c) >= 0) return false;
+    let p = ear.next.next;
+    while (p !== ear.prev) { if (ecPIT(a.x, a.y, b.x, b.y, c.x, c.y, p.x, p.y) && ecArea(p.prev, p, p.next) >= 0) return false; p = p.next; }
+    return true;
+  }
+  function ecCure(start, triangles, dim) {
+    let p = start;
+    do { const a = p.prev, b = p.next.next;
+      if (!ecEquals(a, b) && ecIntersects(a, p, p.next, b) && ecLocallyInside(a, b) && ecLocallyInside(b, a)) {
+        triangles.push(a.i / dim | 0, p.i / dim | 0, b.i / dim | 0); ecRemove(p); ecRemove(p.next); p = start = b; }
+      p = p.next; } while (p !== start);
+    return ecFilter(p);
+  }
+  function ecSplit(start, triangles, dim) {
+    let a = start;
+    do { let b = a.next.next;
+      while (b !== a.prev) { if (a.i !== b.i && ecValidDiag(a, b)) { let c = ecSplitPoly(a, b); a = ecFilter(a, a.next); c = ecFilter(c, c.next); ecEarcutLinked(a, triangles, dim, 0); ecEarcutLinked(c, triangles, dim, 0); return; } b = b.next; }
+      a = a.next; } while (a !== start);
+  }
+  function ecEliminateHoles(data, holeIndices, outerNode, dim) {
+    const queue = []; let i, len, start, end, list;
+    for (i = 0, len = holeIndices.length; i < len; i++) {
+      start = holeIndices[i] * dim; end = i < len - 1 ? holeIndices[i + 1] * dim : data.length;
+      list = ecLinkedList(data, start, end, dim, false); if (list === list.next) list.steiner = true; queue.push(ecLeftmost(list));
+    }
+    queue.sort((a, b) => a.x - b.x);
+    for (i = 0; i < queue.length; i++) outerNode = ecEliminateHole(queue[i], outerNode);
+    return outerNode;
+  }
+  function ecEliminateHole(hole, outerNode) {
+    const bridge = ecHoleBridge(hole, outerNode); if (!bridge) return outerNode;
+    const br = ecSplitPoly(bridge, hole); ecFilter(br, br.next); return ecFilter(bridge, bridge.next);
+  }
+  function ecHoleBridge(hole, outerNode) {
+    let p = outerNode, qx = -Infinity, m; const hx = hole.x, hy = hole.y;
+    do { if (hy <= p.y && hy >= p.next.y && p.next.y !== p.y) { const x = p.x + (hy - p.y) * (p.next.x - p.x) / (p.next.y - p.y); if (x <= hx && x > qx) { qx = x; m = p.x < p.next.x ? p : p.next; if (x === hx) return m; } } p = p.next; } while (p !== outerNode);
+    if (!m) return null;
+    const stop = m, mx = m.x, my = m.y; let tanMin = Infinity, tan; p = m;
+    do { if (hx >= p.x && p.x >= mx && hx !== p.x && ecPIT(hy < my ? hx : qx, hy, mx, my, hy < my ? qx : hx, hy, p.x, p.y)) { tan = Math.abs(hy - p.y) / (hx - p.x); if (ecLocallyInside(p, hole) && (tan < tanMin || (tan === tanMin && p.x > m.x))) { m = p; tanMin = tan; } } p = p.next; } while (p !== stop);
+    return m;
+  }
+  function ecLeftmost(start) { let p = start, lm = start; do { if (p.x < lm.x || (p.x === lm.x && p.y < lm.y)) lm = p; p = p.next; } while (p !== start); return lm; }
+  function ecPIT(ax, ay, bx, by, cx, cy, px, py) { return (cx - px) * (ay - py) - (ax - px) * (cy - py) >= 0 && (ax - px) * (by - py) - (bx - px) * (ay - py) >= 0 && (bx - px) * (cy - py) - (cx - px) * (by - py) >= 0; }
+  function ecValidDiag(a, b) { return a.next.i !== b.i && a.prev.i !== b.i && !ecIntersectsPoly(a, b) && (ecLocallyInside(a, b) && ecLocallyInside(b, a) && ecMiddleInside(a, b) && (ecArea(a.prev, a, b.prev) || ecArea(a, b.prev, b)) || ecEquals(a, b) && ecArea(a.prev, a, a.next) > 0 && ecArea(b.prev, b, b.next) > 0); }
+  function ecArea(p, q, r) { return (q.y - p.y) * (r.x - q.x) - (q.x - p.x) * (r.y - q.y); }
+  function ecEquals(a, b) { return a.x === b.x && a.y === b.y; }
+  function ecIntersects(p1, q1, p2, q2) { const o1 = ecSign(ecArea(p1, q1, p2)), o2 = ecSign(ecArea(p1, q1, q2)), o3 = ecSign(ecArea(p2, q2, p1)), o4 = ecSign(ecArea(p2, q2, q1)); if (o1 !== o2 && o3 !== o4) return true; if (o1 === 0 && ecOnSeg(p1, p2, q1)) return true; if (o2 === 0 && ecOnSeg(p1, q2, q1)) return true; if (o3 === 0 && ecOnSeg(p2, p1, q2)) return true; if (o4 === 0 && ecOnSeg(p2, q1, q2)) return true; return false; }
+  function ecOnSeg(p, q, r) { return q.x <= Math.max(p.x, r.x) && q.x >= Math.min(p.x, r.x) && q.y <= Math.max(p.y, r.y) && q.y >= Math.min(p.y, r.y); }
+  function ecSign(n) { return n > 0 ? 1 : n < 0 ? -1 : 0; }
+  function ecIntersectsPoly(a, b) { let p = a; do { if (p.i !== a.i && p.next.i !== a.i && p.i !== b.i && p.next.i !== b.i && ecIntersects(p, p.next, a, b)) return true; p = p.next; } while (p !== a); return false; }
+  function ecLocallyInside(a, b) { return ecArea(a.prev, a, a.next) < 0 ? ecArea(a, b, a.next) >= 0 && ecArea(a, a.prev, b) >= 0 : ecArea(a, b, a.prev) < 0 || ecArea(a, a.next, b) < 0; }
+  function ecMiddleInside(a, b) { let p = a, inside = false; const px = (a.x + b.x) / 2, py = (a.y + b.y) / 2; do { if (((p.y > py) !== (p.next.y > py)) && p.next.y !== p.y && (px < (p.next.x - p.x) * (py - p.y) / (p.next.y - p.y) + p.x)) inside = !inside; p = p.next; } while (p !== a); return inside; }
+  function ecSplitPoly(a, b) { const a2 = ecNode(a.i, a.x, a.y), b2 = ecNode(b.i, b.x, b.y), an = a.next, bp = b.prev; a.next = b; b.prev = a; a2.next = an; an.prev = a2; b2.next = a2; a2.prev = b2; bp.next = b2; b2.prev = bp; return b2; }
+  function ecNode(i, x, y) { return { i, x, y, prev: null, next: null, steiner: false }; }
+  function ecInsert(i, x, y, last) { const p = ecNode(i, x, y); if (!last) { p.prev = p; p.next = p; } else { p.next = last.next; p.prev = last; last.next.prev = p; last.next = p; } return p; }
+  function ecRemove(p) { p.next.prev = p.prev; p.prev.next = p.next; }
+  function ecSignedArea(d, s, e, dim) { let sum = 0; for (let i = s, j = e - dim; i < e; i += dim) { sum += (d[j] - d[i]) * (d[i + 1] + d[j + 1]); j = i; } return sum; }
+
+  function loopArea2(loop) { let s = 0; for (let i = 0; i < loop.length; i++) { const a = loop[i], b = loop[(i + 1) % loop.length]; s += a[0] * b[1] - b[0] * a[1]; } return s; }
+  function ensureWinding(loop, wantCCW) { const ccw = loopArea2(loop) > 0; return ccw === wantCCW ? loop : loop.slice().reverse(); }
+
+  // extrude an outer loop with any number of circular holes into a solid (clean caps via earcut)
+  function extrudeMulti(outerIn, holesIn, face) {
+    const outer = ensureWinding(outerIn, true);                 // outer CCW
+    const holes = (holesIn || []).map(h => ensureWinding(h, false)); // holes CW
+    const loops = [outer].concat(holes), data = [], holeIndices = []; let count = 0;
+    loops.forEach((loop, li) => { if (li > 0) holeIndices.push(count); for (const pt of loop) { data.push(pt[0], pt[1]); count++; } });
+    const tri = earcut(data, holeIndices, 2), m = M(), bot = [], top = [];
+    for (let k = 0; k < count; k++) bot.push(V(m, data[2 * k], data[2 * k + 1], 0));
+    for (let k = 0; k < count; k++) top.push(V(m, data[2 * k], data[2 * k + 1], face));
+    for (let t = 0; t < tri.length; t += 3) { const a = tri[t], b = tri[t + 1], c = tri[t + 2]; T(m, bot[a], bot[c], bot[b]); T(m, top[a], top[b], top[c]); }
+    // outer is CCW and holes are CW, so the same wall winding gives outward normals for all loops
+    let base = 0;
+    loops.forEach((loop) => { const n = loop.length; for (let i = 0; i < n; i++) { const j = (i + 1) % n, A = base + i, B = base + j; Q(m, bot[A], bot[B], top[B], top[A]); } base += n; });
+    return m;
+  }
+
+  function buildCycloidalDisc(p) {
+    let outer = cycDiscProfile({ R: p.R, r: p.r, N: p.N, e: p.e, steps: p.steps || 540 });
+    if (p.diaClearance) outer = shrinkRadial(outer, p.diaClearance / 2);
+    const holes = [], bore = (p.bore || 0) + (p.bore > 0 ? (p.boreClearance || 0) : 0);
+    if (bore > 0) holes.push(circlePts(bore / 2, 72));
+    const Np = p.outCount || 0, rc = (p.outCircleDia || 0) / 2;
+    let rh = (p.outHoleDia || 0) / 2; if (p.boreClearance) rh += p.boreClearance / 2;   // pin clearance
+    let placedPins = 0;
+    if (Np > 0 && rc > 0 && rh > 0) {
+      for (let k = 0; k < Np; k++) { const th = TAU * k / Np, cx = rc * Math.cos(th), cy = rc * Math.sin(th), hole = [];
+        for (let i = 0; i < 36; i++) { const a = TAU * i / 36; hole.push([cx + rh * Math.cos(a), cy + rh * Math.sin(a)]); } holes.push(hole); placedPins++; }
+    }
+    const mesh = extrudeMulti(outer, holes, p.face);
+    mesh.info = { type: 'cycloidal disc', ratio: p.N - 1, lobes: p.N - 1, pins: p.N, eccentricity: p.e,
+      discDia: +(2 * p.R - 2 * p.e).toFixed(1), outputPins: placedPins, bore: +bore.toFixed(2) };
+    return mesh;
+  }
+
+  function toSTL(mesh, name) {
+    const Vt = mesh.verts, F = mesh.faces; let s = 'solid ' + (name || 'part') + '\n';
+    for (const f of F) {
+      const a = Vt[f[0]], b = Vt[f[1]], c = Vt[f[2]];
+      let nx = (b[1] - a[1]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[1] - a[1]);
+      let ny = (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]);
+      let nz = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+      const L = Math.hypot(nx, ny, nz) || 1; nx /= L; ny /= L; nz /= L;
+      s += `facet normal ${nx} ${ny} ${nz}\n outer loop\n  vertex ${a[0]} ${a[1]} ${a[2]}\n  vertex ${b[0]} ${b[1]} ${b[2]}\n  vertex ${c[0]} ${c[1]} ${c[2]}\n endloop\nendfacet\n`;
+    }
+    return s + 'endsolid ' + (name || 'part') + '\n';
+  }
+
+  const API = { buildGear, buildRing, buildPlanetary, assemblePlanetary, solvePlanetary,
+    buildCycloidalDisc, cycloidProfile, cycDiscProfile, cycValidity, cycMaxPinR, cycEccRange, cycHoleRanges, toSTL, merge, translate, rotZ };
+  root.PARTGEN = API;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+
+<!-- ===== app ===== -->
+<script>
+(function(){
+  const G=window.PARTGEN, cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+  const ICON={spur:'⚙',helical:'⛁',herringbone:'⛌'};
+  const GTYPES=[{k:'spur',n:'Spur'},{k:'helical',n:'Helical'},{k:'herringbone',n:'Herringbone'}];
+  const PTYPES=[{k:'spur',n:'Spur'},{k:'helical',n:'Helical'}];
+
+  let mode='gear';
+  const gear={kind:'spur',teeth:20,module:2,pressureAngle:20,face:10,bore:6,helixAngle:20};
+  const plan={kind:'spur',target:5,N:3,module:2,pressureAngle:20,face:10,helixAngle:15,sunBore:5,planetBore:4,part:'assembly',sol:null};
+  const cyc={ratio:19,D:80,d:8,e:1.5,face:10,bore:12,outCount:6,outCircleD:24,outHoleD:4,holesOK:true};
+  let mesh=null,info=null,cycValid=true,cycInputs={};
+
+  const TAGS={gear:'Drag to orbit · scroll to zoom · export STL or a 3D-print copy with fit clearances.',
+    planetary:'Set a target ratio — PartForge sizes the sun, planets & ring (ring fixed, carrier out).',
+    cycloidal:'Cycloidal disc from the parametric equations. Invalid (undercut) inputs are flagged; valid ranges shown.'};
+
+  const panel=document.getElementById('panel');
+  function field(label,val,step,on){const r=document.createElement('div');r.className='row';
+    const l=document.createElement('label');l.textContent=label;const i=document.createElement('input');
+    i.type='number';i.step=step;i.value=val;i.oninput=()=>{const v=parseFloat(i.value);if(!isNaN(v))on(v);};
+    r.appendChild(l);r.appendChild(i);return r;}
+  // field with a live range hint underneath (for cycloidal constraints)
+  function fieldR(key,label,val,step,on){const wrap=document.createElement('div');
+    const r=document.createElement('div');r.className='row';
+    const l=document.createElement('label');l.textContent=label;const i=document.createElement('input');
+    i.type='number';i.step=step;i.value=val;i.oninput=()=>{const v=parseFloat(i.value);if(!isNaN(v)){on(v);}};
+    r.appendChild(l);r.appendChild(i);
+    const h=document.createElement('div');h.style.cssText='font-size:10.5px;color:var(--ink-soft);margin:-4px 0 6px;text-align:right';
+    wrap.appendChild(r);wrap.appendChild(h);cycInputs[key]={input:i,hint:h};return wrap;}
+  function typeRow(types,current,on){const wrap=document.createElement('div');wrap.className='types'+(types.length===2?' two':'');
+    types.forEach(t=>{const b=document.createElement('button');b.className='type'+(t.k===current?' active':'');
+      b.innerHTML='<b>'+ICON[t.k]+'</b>'+t.n;b.onclick=()=>on(t.k);wrap.appendChild(b);});return wrap;}
+  function lab(txt){const d=document.createElement('div');d.className='label';d.textContent=txt;return d;}
+  function seg(opts,current,on){const s=document.createElement('div');s.className='seg';
+    opts.forEach(([k,n])=>{const b=document.createElement('button');b.textContent=n;if(current===k)b.classList.add('active');
+      b.onclick=()=>on(k);s.appendChild(b);});return s;}
+
+  function buildPanel(){
+    panel.innerHTML='';cycInputs={};
+    if(mode==='gear'){
+      panel.appendChild(lab('Gear type'));
+      panel.appendChild(typeRow(GTYPES,gear.kind,k=>{gear.kind=k;buildPanel();regen();}));
+      panel.appendChild(lab('Parameters'));
+      panel.appendChild(field('Teeth',gear.teeth,1,v=>{gear.teeth=Math.max(6,Math.round(v));regen();}));
+      panel.appendChild(field('Module (mm)',gear.module,0.1,v=>{gear.module=v;regen();}));
+      panel.appendChild(field('Pressure angle°',gear.pressureAngle,0.5,v=>{gear.pressureAngle=v;regen();}));
+      panel.appendChild(field('Face width (mm)',gear.face,0.5,v=>{gear.face=v;regen();}));
+      panel.appendChild(field('Bore Ø (mm)',gear.bore,0.5,v=>{gear.bore=v;regen();}));
+      if(gear.kind!=='spur')panel.appendChild(field('Helix angle°',gear.helixAngle,1,v=>{gear.helixAngle=v;regen();}));
+      panel.appendChild(infoEl());
+    } else if(mode==='planetary'){
+      panel.appendChild(lab('Gear type'));
+      panel.appendChild(typeRow(PTYPES,plan.kind,k=>{plan.kind=k;buildPanel();regen();}));
+      panel.appendChild(lab('Design target'));
+      panel.appendChild(field('Gear ratio (i)',plan.target,0.1,v=>{plan.target=v;solveAndRegen();}));
+      panel.appendChild(field('Planets (N)',plan.N,1,v=>{plan.N=Math.max(2,Math.round(v));solveAndRegen();}));
+      panel.appendChild(field('Module (mm)',plan.module,0.1,v=>{plan.module=v;regen();}));
+      panel.appendChild(field('Pressure angle°',plan.pressureAngle,0.5,v=>{plan.pressureAngle=v;regen();}));
+      panel.appendChild(field('Face width (mm)',plan.face,0.5,v=>{plan.face=v;regen();}));
+      panel.appendChild(field('Sun bore Ø',plan.sunBore,0.5,v=>{plan.sunBore=v;regen();}));
+      panel.appendChild(field('Planet bore Ø',plan.planetBore,0.5,v=>{plan.planetBore=v;regen();}));
+      if(plan.kind!=='spur')panel.appendChild(field('Helix angle°',plan.helixAngle,1,v=>{plan.helixAngle=v;regen();}));
+      panel.appendChild(infoEl());
+      panel.appendChild(lab('Export part'));
+      panel.appendChild(seg([['assembly','Assembly'],['sun','Sun'],['planet','Planet'],['ring','Ring']],plan.part,
+        k=>{plan.part=k;buildPanel();regen();resetView();}));
+    } else {
+      panel.appendChild(lab('Design'));
+      panel.appendChild(fieldR('ratio','Reduction ratio (i)',cyc.ratio,1,v=>{cyc.ratio=Math.max(3,Math.round(v));regen();}));
+      panel.appendChild(fieldR('D','Pin-circle Ø  D',cyc.D,1,v=>{cyc.D=v;regen();}));
+      panel.appendChild(fieldR('d','Pin Ø  d',cyc.d,0.5,v=>{cyc.d=v;regen();}));
+      panel.appendChild(fieldR('e','Eccentricity  e',cyc.e,0.25,v=>{cyc.e=v;regen();}));
+      panel.appendChild(field('Face width (mm)',cyc.face,0.5,v=>{cyc.face=v;regen();}));
+      panel.appendChild(field('Centre bore Ø',cyc.bore,0.5,v=>{cyc.bore=v;regen();}));
+      panel.appendChild(lab('Output pins'));
+      panel.appendChild(fieldR('outCount','Number of pins',cyc.outCount,1,v=>{cyc.outCount=Math.max(0,Math.round(v));regen();}));
+      panel.appendChild(fieldR('outCircleD','Output pin-circle Ø',cyc.outCircleD,1,v=>{cyc.outCircleD=v;regen();}));
+      panel.appendChild(fieldR('outHoleD','Output pin Ø',cyc.outHoleD,0.5,v=>{cyc.outHoleD=v;regen();}));
+      panel.appendChild(infoEl());
+    }
+  }
+  function infoEl(){const d=document.createElement('div');d.className='info';d.id='inf';return d;}
+
+  function planParams(cl,quality){return {module:plan.module,solution:plan.sol,face:plan.face,kind:plan.kind,
+    helixAngle:plan.helixAngle,pressureAngle:plan.pressureAngle,sunBore:plan.sunBore,planetBore:plan.planetBore,
+    ptsPerFlank:quality,diaClearance:cl.dia,boreClearance:cl.bore};}
+
+  function makeMesh(cl,quality){
+    if(mode==='gear'){
+      return G.buildGear({kind:gear.kind,teeth:gear.teeth,module:gear.module,pressureAngle:gear.pressureAngle,
+        face:gear.face,bore:gear.bore,helixAngle:gear.helixAngle,ptsPerFlank:quality,diaClearance:cl.dia,boreClearance:cl.bore});
+    } else if(mode==='planetary'){
+      if(!plan.sol)plan.sol=G.solvePlanetary(plan.target,plan.N);
+      const parts=G.buildPlanetary(planParams(cl,quality));
+      if(plan.part==='sun')return parts.sun;if(plan.part==='planet')return parts.planet;if(plan.part==='ring')return parts.ring;
+      return G.assemblePlanetary(parts,{module:plan.module,solution:plan.sol});
+    } else {
+      const R=cyc.D/2,r=cyc.d/2,N=cyc.ratio+1;
+      const base={R,r,N,e:cyc.e,face:cyc.face,bore:cyc.bore,diaClearance:cl.dia,boreClearance:cl.bore,steps:quality>10?540:300};
+      if(cyc.holesOK&&cyc.outCount>0){base.outCount=cyc.outCount;base.outCircleDia=cyc.outCircleD;base.outHoleDia=cyc.outHoleD;}
+      return G.buildCycloidalDisc(base);
+    }
+  }
+  function solveAndRegen(){plan.sol=G.solvePlanetary(plan.target,plan.N);regen();}
+
+  function clearStage(){const W=cv.width,H=cv.height,cx=W/2,cy=H/2;
+    const bg=ctx.createRadialGradient(cx,cy*0.8,10,cx,cy,Math.max(W,H)*0.75);
+    bg.addColorStop(0,'#f3e9dd');bg.addColorStop(1,'#e0cdb8');ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);}
+
+  function regen(){
+    if(mode==='cycloidal'){updateCyc();
+      if(!cycValid){mesh=null;clearStage();return;}
+      mesh=makeMesh({dia:0,bore:0},8);info=mesh.info;prepMesh(mesh);draw();return;}
+    const q=(mode==='planetary'&&plan.part==='assembly')?6:8;
+    mesh=makeMesh({dia:0,bore:0},q);info=mesh.info;prepMesh(mesh);showInfo();draw();
+  }
+
+  function hint(key,txt,bad){const o=cycInputs[key];if(!o)return;o.hint.textContent=txt;
+    o.input.style.borderColor=bad?'#b5532f':'var(--line)';o.input.style.color=bad?'#b5532f':'var(--ink)';}
+
+  function updateCyc(){
+    const R=cyc.D/2,r=cyc.d/2,N=cyc.ratio+1;
+    const v=G.cycValidity({R,r,N,e:cyc.e});
+    cycValid=v.ok;
+    // ranges for profile params
+    const pinDmax=2*G.cycMaxPinR({R,N,e:cyc.e});
+    const ecc=G.cycEccRange({R,r,N});
+    hint('ratio','pins = '+N+' · lobes = '+cyc.ratio,false);
+    hint('D','disc Ø ≈ '+(v.rmax?(2*v.rmax).toFixed(1):'—')+' mm',!(cyc.D>0));
+    hint('d','valid ≤ '+pinDmax.toFixed(2)+' mm',cyc.d>pinDmax+1e-6);
+    hint('e',ecc.emin!=null?('valid '+ecc.emin.toFixed(2)+'–'+ecc.emax.toFixed(2)+' mm'):'no valid range',!(cyc.e>=(ecc.emin||0)&&cyc.e<=(ecc.emax||0)));
+    // output pin ranges (only if profile valid)
+    let holesOK=true;
+    if(cyc.outCount>0){
+      const hr=G.cycHoleRanges({R,r,N,e:cyc.e,bore:cyc.bore,outCount:cyc.outCount,outHoleDia:cyc.outHoleD,outCircleDia:cyc.outCircleD});
+      const cOK=cyc.outCircleD>=hr.circleMin&&cyc.outCircleD<=hr.circleMax;
+      const hOK=cyc.outHoleD<=hr.holeMax&&cyc.outHoleD>0;
+      const nOK=cyc.outCount<=hr.countMax;
+      hint('outCount','max '+hr.countMax,!nOK);
+      hint('outCircleD','valid '+hr.circleMin+'–'+hr.circleMax+' mm',!cOK);
+      hint('outHoleD','valid ≤ '+hr.holeMax+' mm',!hOK);
+      holesOK=cOK&&hOK&&nOK&&v.ok;
+    } else { hint('outCount','0 = none',false);hint('outCircleD','—',false);hint('outHoleD','—',false); }
+    cyc.holesOK=holesOK;
+    // banner
+    const el=document.getElementById('inf');if(el){
+      if(!v.ok){el.style.background='rgba(181,83,47,.12)';el.style.borderColor='#b5532f';el.style.color='#8f3d22';
+        el.innerHTML='<b>✗ Invalid geometry</b><br>'+v.reason;}
+      else{el.style.background='';el.style.borderColor='';el.style.color='';
+        let extra=cyc.outCount>0&&!holesOK?'<br><span style="color:#8f3d22">⚠ output pins out of range — holes omitted</span>':'';
+        el.innerHTML='<span class="big">'+cyc.ratio+' : 1</span> &nbsp;<b>✓ valid</b><br>'+
+          'pins '+N+' · lobes '+cyc.ratio+' · disc Ø '+(2*v.rmax).toFixed(1)+' mm'+
+          (cyc.outCount>0&&holesOK?'<br>'+cyc.outCount+' output pins Ø'+cyc.outHoleD+' on Ø'+cyc.outCircleD+' circle':'')+extra;}
+    }
+  }
+
+  function showInfo(){const el=document.getElementById('inf');if(!el)return;let html='';
+    if(mode==='gear'){html='<b>'+cap(info.type)+'</b><br>pitch Ø '+info.pitchDia+' · outer Ø '+info.outerDia+' · bore Ø '+info.bore+' mm';}
+    else if(mode==='planetary'){const s=plan.sol;
+      html='<span class="big">'+s.ratio+' : 1</span> '+(s.err>0.0005?'(target '+plan.target+', Δ '+s.err+')':'(exact)')+'<br>'+
+        'Sun <b>'+s.S+'T</b> · Planet <b>'+s.P+'T</b> ×'+s.N+' · Ring <b>'+s.R+'T</b><br>module '+plan.module+' · R = S+2P ✓';}
+    el.innerHTML=html;}
+  function cap(s){return s.replace(/^./,c=>c.toUpperCase());}
+
+  // renderer
+  let rotX=-1.0,rotY=0.55,scale=1,center=[0,0,0],spin=false,raf=null,drag=false,lx=0,ly=0;
+  function prepMesh(m){const Vv=m.verts;let a=[1e9,1e9,1e9],b=[-1e9,-1e9,-1e9];
+    for(const v of Vv)for(let i=0;i<3;i++){if(v[i]<a[i])a[i]=v[i];if(v[i]>b[i])b[i]=v[i];}
+    center=[(a[0]+b[0])/2,(a[1]+b[1])/2,(a[2]+b[2])/2];
+    const rad=0.5*Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2])||1;scale=1/rad;}
+  function resize(){const r=cv.getBoundingClientRect(),dpr=Math.min(2,window.devicePixelRatio||1);
+    cv.width=Math.max(1,r.width*dpr);cv.height=Math.max(1,r.height*dpr);draw();}
+  window.addEventListener('resize',resize);
+  function draw(){
+    if(!mesh){clearStage();return;}const W=cv.width,H=cv.height,cx=W/2,cy=H/2;
+    const bg=ctx.createRadialGradient(cx,cy*0.8,10,cx,cy,Math.max(W,H)*0.75);
+    bg.addColorStop(0,'#f3e9dd');bg.addColorStop(1,'#e0cdb8');ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+    const cX=Math.cos(rotX),sX=Math.sin(rotX),cY=Math.cos(rotY),sY=Math.sin(rotY);
+    const Vv=mesh.verts,F=mesh.faces,n=Vv.length,px=new Float64Array(n),py=new Float64Array(n),pz=new Float64Array(n);
+    for(let i=0;i<n;i++){let x=(Vv[i][0]-center[0])*scale,y=(Vv[i][1]-center[1])*scale,z=(Vv[i][2]-center[2])*scale;
+      let x1=x*cY+z*sY,z1=-x*sY+z*cY,y2=y*cX-z1*sX,z2=y*sX+z1*cX;px[i]=x1;py[i]=y2;pz[i]=z2;}
+    const light=[-0.35,-0.5,0.78],fit=Math.min(W,H)*0.40,tris=[];
+    for(let f=0;f<F.length;f++){const a=F[f][0],b=F[f][1],c=F[f][2];
+      let nx=(py[b]-py[a])*(pz[c]-pz[a])-(pz[b]-pz[a])*(py[c]-py[a]);
+      let ny=(pz[b]-pz[a])*(px[c]-px[a])-(px[b]-px[a])*(pz[c]-pz[a]);
+      let nz=(px[b]-px[a])*(py[c]-py[a])-(py[b]-py[a])*(px[c]-px[a]);
+      const nl=Math.hypot(nx,ny,nz)||1;let br=0.30+0.78*Math.abs((nx*light[0]+ny*light[1]+nz*light[2])/nl);
+      if(br>1)br=1;tris.push([(pz[a]+pz[b]+pz[c])/3,a,b,c,br]);}
+    tris.sort((p,q)=>p[0]-q[0]);
+    const base=[168,118,72],doStroke=F.length<4500&&!drag;
+    for(const t of tris){const a=t[1],b=t[2],c=t[3],br=t[4];
+      ctx.beginPath();ctx.moveTo(cx+px[a]*fit,cy-py[a]*fit);ctx.lineTo(cx+px[b]*fit,cy-py[b]*fit);ctx.lineTo(cx+px[c]*fit,cy-py[c]*fit);ctx.closePath();
+      const r=base[0]*br|0,g=base[1]*br|0,bl=base[2]*br|0;ctx.fillStyle='rgb('+r+','+g+','+bl+')';
+      if(doStroke){ctx.strokeStyle=ctx.fillStyle;ctx.lineWidth=0.6;ctx.stroke();}ctx.fill();}
+  }
+  cv.addEventListener('pointerdown',e=>{drag=true;lx=e.clientX;ly=e.clientY;cv.setPointerCapture(e.pointerId);});
+  cv.addEventListener('pointermove',e=>{if(!drag)return;rotY+=(e.clientX-lx)*0.01;rotX+=(e.clientY-ly)*0.01;
+    rotX=Math.max(-Math.PI/2+0.05,Math.min(Math.PI/2-0.05,rotX));lx=e.clientX;ly=e.clientY;draw();});
+  cv.addEventListener('pointerup',()=>{drag=false;draw();});
+  cv.addEventListener('wheel',e=>{e.preventDefault();scale*=Math.exp(-e.deltaY*0.0011);draw();},{passive:false});
+  function resetView(){const top=(mode==='cycloidal')||(mode==='planetary'&&plan.part==='assembly');
+    rotX=top?-0.4:-1.0;rotY=0.55;if(mesh)prepMesh(mesh);draw();}
+  document.getElementById('reset').onclick=resetView;
+  document.getElementById('spin').onclick=function(){spin=!spin;this.style.background=spin?'var(--olive)':'transparent';
+    this.style.color=spin?'#f4efe2':'';loop();};
+  function loop(){if(!spin){if(raf)cancelAnimationFrame(raf);return;}rotY+=0.012;draw();raf=requestAnimationFrame(loop);}
+
+  // downloads
+  function tol(){return {bore:parseFloat(document.getElementById('tolBore').value)||0,dia:parseFloat(document.getElementById('tolDia').value)||0};}
+  function fname(printed){let base;
+    if(mode==='gear')base=gear.kind+'_z'+gear.teeth+'_m'+gear.module;
+    else if(mode==='planetary')base='planetary_'+plan.sol.ratio.toFixed(2).replace('.','p')+'to1_'+plan.part;
+    else base='cycloidal_'+cyc.ratio+'to1_disc';
+    return 'partforge_'+base+(printed?'_print':'')+'.stl';}
+  function download(printed){
+    if(mode==='cycloidal'&&!cycValid){alert('Invalid geometry — adjust the parameters (see the red ranges) before exporting.');return;}
+    const cl=printed?tol():{dia:0,bore:0};const m=makeMesh(cl,14);
+    const blob=new Blob([G.toSTL(m,mode)],{type:'model/stl'});const url=URL.createObjectURL(blob),a=document.createElement('a');
+    a.href=url;a.download=fname(printed).replace(/\s+/g,'');a.click();setTimeout(()=>URL.revokeObjectURL(url),1500);}
+  document.getElementById('dlStl').onclick=()=>download(false);
+  document.getElementById('dlPrint').onclick=()=>download(true);
+
+  // tabs
+  document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
+    document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===t));
+    mode=t.dataset.mode;document.getElementById('tag').textContent=TAGS[mode];
+    if(mode==='planetary'&&!plan.sol)plan.sol=G.solvePlanetary(plan.target,plan.N);
+    buildPanel();regen();resetView();});
+
+  document.getElementById('tag').textContent=TAGS.gear;
+  buildPanel();
+  requestAnimationFrame(()=>{resize();regen();resetView();});
+})();
+
+</script>
+</body>
+</html>
