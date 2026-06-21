@@ -1,58 +1,44 @@
-# PartForge
+PartForge
 
-**Designed by Ishaan Bhutda** · [LinkedIn](https://www.linkedin.com/in/ishaanbhutda/)
+Designed by Ishaan Bhutda · LinkedIn
 
-A self-contained, in-browser **parametric gear & gearbox generator** with an earthy theme.
-No build step, no dependencies, no server — a single `index.html` that renders 3D on a
-plain `<canvas>` and exports STL.
+PartForge is a little gear workshop that lives in your browser. You type in a few
+numbers, watch the part take shape in 3D, and download an STL you can drop straight
+into a slicer or CAD program. No installs, no accounts, no sign-ups — it's one HTML
+file that does all the maths and 3D rendering on its own.
 
-**[▶ Live demo](#)** — _(enable GitHub Pages, then drop your URL here)_
+I built it because I kept rewriting the same gear equations in MATLAB every time I
+wanted to print something, and I wanted a faster way to go from "I need a 19:1 reducer"
+to "here's the STL on the print bed." If it saves you that same hassle, brilliant.
 
-## Features
+👉 Try it live — (once you turn on GitHub Pages, paste your link here)
 
-- **Single Gear** — spur, helical, and herringbone gears with true involute tooth flanks,
-  parametric module / teeth / pressure angle / face width / bore, and helical & herringbone twist.
-- **Planetary Gearbox** — enter a target reduction ratio and number of planets; PartForge solves
-  the sun / planet / ring tooth counts (ring fixed, carrier output, `i = 1 + R/S`) honouring the
-  meshing constraints `R = S + 2P`, equal planet spacing, and the no-collision neighbour condition.
-  Export the assembly or any single gear (sun, planet, internal ring).
-- **Cycloidal Gearbox** — cycloidal disc generated directly from the parametric equations
-  (see below); reduction ratio = pins − 1. Export the full drive or the disc on its own.
-- **Two exports per part** — a nominal **STL**, and a **3D-print STL** that enlarges the bore and
-  trims the OD / tooth thickness by user-set clearances for printable fits and backlash.
-- Orbit (drag), zoom (scroll), spin, and reset.
 
-## Cycloidal disc equation
+What it makes
 
-The disc profile uses the standard cycloidal parametrisation (with `atan2` for quadrant safety):
+PartForge has three tabs, each for a different kind of part.
 
-```
-R = D/2          % pin-circle radius
-r = d/2          % pin radius
-N                % number of ring pins   (lobes = N-1, ratio = N-1)
-e                % eccentricity
+Single Gear — spur, helical, and herringbone gears with proper involute teeth.
+Set the number of teeth, the module, pressure angle, face width, and bore, and (for
+helical/herringbone) the helix angle. The teeth are real involute profiles, not
+approximations, so they actually mesh.
 
-psi(t) = atan2( sin((N-1)t),  cos((N-1)t) - R/(e*N) )
-x(t)   =  R*cos(t) - r*cos(t + psi) - e*cos(N*t)
-y(t)   = -R*sin(t) + r*sin(t + psi) + e*sin(N*t)
-```
+Planetary — tell it the reduction ratio you want and how many planets, and it
+works out the tooth counts for you. It sizes the sun, the planets, and the internal
+ring gear so everything meshes and the planets are evenly spaced, then shows you the
+exact ratio it landed on. You can export the whole assembly or any single gear.
 
-## Run locally
+Cycloidal — a cycloidal disc, the heart of a cycloidal drive. This is the one I
+care about most, because the disc profile comes straight from the parametric equations
+below. Set the reduction ratio, the pin-circle and pin sizes, the eccentricity, and the
+output-pin holes, and it draws the lobed disc for you. It also checks the maths: if your
+numbers would produce a self-overlapping or undercut shape that won't actually work, it
+tells you, and it shows the valid range for each value so you can dial it in.
 
-Just open `index.html` in any modern browser. That's it.
+Every part can be exported two ways:
 
-## Deploy on GitHub Pages
 
-1. Create a repo and add `index.html` (and this `README.md`).
-2. **Settings → Pages → Build and deployment → Source: Deploy from a branch**, pick `main` / root.
-3. Your site appears at `https://<user>.github.io/<repo>/`.
-
-## Notes & limits
-
-- Exports are **STL meshes**, not STEP solids. For a precise B-rep STEP, use a CAD kernel.
-- The planetary preview's planet meshing phase is cosmetic; individually exported gears are exact.
-- Cycloidal output-pin holes are not modelled (centre bore only).
-
-## License
-
-MIT — do whatever you like.
+Download STL — the exact, nominal geometry.
+3D-print STL — the same part with printing clearances baked in: the bore is
+opened up a touch so it slides onto a shaft, and the outer teeth/lobes are trimmed
+slightly so meshing parts don't bind. You set those clearances in the box on the left.
