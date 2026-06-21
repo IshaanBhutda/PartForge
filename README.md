@@ -99,5 +99,3 @@ STEP solid exports, full cycloidal-drive assemblies, maybe gear-train design end
 If you use it, break it, or have an idea for it, I'm all ears — open an issue, send a PR,
 or reach out on [LinkedIn](https://www.linkedin.com/in/ishaanbhutda/). And if you print
 something with it, I'd genuinely love to see it. More to come. 🛠️
-
-*— Ishaan*
