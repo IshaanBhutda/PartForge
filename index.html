@@ -130,6 +130,7 @@
   }
   function translate(m, dx, dy, dz) { for (const v of m.verts) { v[0] += dx; v[1] += dy; v[2] += dz; } return m; }
   function rotZ(m, a) { const c = Math.cos(a), s = Math.sin(a); for (const v of m.verts) { const x = v[0], y = v[1]; v[0] = x * c - y * s; v[1] = x * s + y * c; } return m; }
+  function clone(m) { return { verts: m.verts.map(v => v.slice()), faces: m.faces.map(f => f.slice()) }; }
 
   // ---- external involute gear cross-section (clearance-aware) ----
   function gearProfile(p) {
@@ -256,32 +257,44 @@
   function buildPlanetary(p) {
     const sol = p.solution;                                    // {S,P,R,N}
     const m = p.module, kind = p.kind || 'spur';
-    const common = { module: m, pressureAngle: p.pressureAngle || 20, face: p.face, kind,
-      helixAngle: p.helixAngle, ptsPerFlank: p.ptsPerFlank, diaClearance: p.diaClearance || 0 };
-    const sun = buildGear(Object.assign({ teeth: sol.S, bore: p.sunBore || 0, boreClearance: p.boreClearance || 0 }, common));
-    const planet0 = buildGear(Object.assign({ teeth: sol.P, bore: p.planetBore || 0, boreClearance: p.boreClearance || 0 }, common));
-    const ring = buildRing(Object.assign({ teeth: sol.R, rim: p.rim }, common));
+    // Helical hands: external-external mesh (sun↔planet) needs OPPOSITE hands;
+    // external-internal mesh (planet↔ring) needs the SAME hand. So with planets at
+    // hand +h, the sun is -h and the ring is +h. Same helix magnitude throughout.
+    const h = p.helixAngle || 0;
+    const base = { module: m, pressureAngle: p.pressureAngle || 20, face: p.face, kind,
+      ptsPerFlank: p.ptsPerFlank, diaClearance: p.diaClearance || 0 };
+    const sun = buildGear(Object.assign({ teeth: sol.S, bore: p.sunBore || 0, boreClearance: p.boreClearance || 0, helixAngle: -h }, base));
+    const planet0 = buildGear(Object.assign({ teeth: sol.P, bore: p.planetBore || 0, boreClearance: p.boreClearance || 0, helixAngle: h }, base));
+    const ring = buildRing(Object.assign({ teeth: sol.R, rim: p.rim, helixAngle: h }, base));
     return { sun, planet: planet0, ring, sol };
   }
 
-  // assemble planetary parts into one mesh laid out as a gearbox
+  // Assemble the gearbox with proper tooth clocking so teeth interlock without
+  // overlap. sunAngle (rad) drives the mechanism: ring fixed, carrier (planet
+  // orbit) and planet spin follow real epicyclic kinematics.
   function assemblePlanetary(parts, p) {
-    const m = p.module, S = parts.sol.S, P = parts.sol.P, N = parts.sol.N;
-    const rc = m * (S + P) / 2;                                // carrier radius
+    const S = parts.sol.S, P = parts.sol.P, R = parts.sol.R, N = parts.sol.N, m = p.module;
+    const rc = m * (S + P) / 2;
+    const sunAngle = p.sunAngle || 0;
+    const aS = sunAngle / TAU;                                  // sun angle, turns
+    const carrier = sunAngle * S / (S + R);                     // planet-orbit angle, rad
+    const PP = (p.planetPhase || 0), RP = (p.ringPhase || 0);   // half-tooth tuning
     const out = [];
-    out.push(parts.sun);                                       // sun at center
-    // ring, phase-aligned so a tooth space faces a planet
-    const ring = JSON.parse(JSON.stringify(parts.ring));
-    rotZ(ring, Math.PI / parts.sol.R);
-    out.push(ring);
+    const sun = clone(parts.sun); rotZ(sun, sunAngle); out.push(sun);
+    const betas = [];
     for (let k = 0; k < N; k++) {
-      const phi = k * TAU / N;
-      const pl = JSON.parse(JSON.stringify(parts.planet));
-      // approximate meshing phase so teeth interleave
-      rotZ(pl, -(S / P) * phi + (P % 2 ? Math.PI / P : 0));
-      translate(pl, rc * Math.cos(phi), rc * Math.sin(phi), 0);
-      out.push(pl);
+      const phi = k * TAU / N + carrier, f = phi / TAU;
+      // planet spin so a sun tooth meets a planet gap along the line of centres
+      const b = (0.5 + 0.5 * P + (P - S) * f + S * aS) / P;     // turns
+      const beta = b * TAU + PP; betas.push(b);
+      const pl = clone(parts.planet); rotZ(pl, beta);
+      translate(pl, rc * Math.cos(phi), rc * Math.sin(phi), 0); out.push(pl);
     }
+    // ring clocked from the planet-0 internal mesh (one ring serves all planets
+    // because the solver enforces (S+R) % N === 0)
+    const f0 = carrier / TAU, b0 = betas[0];
+    const g = (0.5 + (R - P) * f0 + P * b0) / R;                // turns
+    const ring = clone(parts.ring); rotZ(ring, g * TAU + RP); out.push(ring);
     return merge.apply(null, out);
   }
 
@@ -596,6 +609,7 @@
   const plan={kind:'spur',target:5,N:3,module:2,pressureAngle:20,face:10,helixAngle:15,sunBore:5,planetBore:4,part:'assembly',sol:null};
   const cyc={ratio:19,D:80,d:8,e:1.5,face:10,bore:12,outCount:6,outCircleD:24,outHoleD:4,holesOK:true};
   let mesh=null,info=null,cycValid=true,cycInputs={};
+  let planParts=null,sunAngle=0;   // cached planetary parts + animation state
 
   const TAGS={gear:'Drag to orbit · scroll to zoom · export STL or a 3D-print copy with fit clearances.',
     planetary:'Set a target ratio — PartForge sizes the sun, planets & ring (ring fixed, carrier out).',
@@ -678,9 +692,14 @@
         face:gear.face,bore:gear.bore,helixAngle:gear.helixAngle,ptsPerFlank:quality,diaClearance:cl.dia,boreClearance:cl.bore});
     } else if(mode==='planetary'){
       if(!plan.sol)plan.sol=G.solvePlanetary(plan.target,plan.N);
-      const parts=G.buildPlanetary(planParams(cl,quality));
+      const asm=plan.part==='assembly';
+      const dia=asm?Math.max(cl.dia,0.12*plan.module):cl.dia;   // backlash so assembled teeth never overlap
+      const parts=G.buildPlanetary({module:plan.module,solution:plan.sol,face:plan.face,kind:plan.kind,
+        helixAngle:plan.helixAngle,pressureAngle:plan.pressureAngle,sunBore:plan.sunBore,planetBore:plan.planetBore,
+        ptsPerFlank:quality,diaClearance:dia,boreClearance:cl.bore});
       if(plan.part==='sun')return parts.sun;if(plan.part==='planet')return parts.planet;if(plan.part==='ring')return parts.ring;
-      return G.assemblePlanetary(parts,{module:plan.module,solution:plan.sol});
+      planParts=parts;
+      return G.assemblePlanetary(parts,{module:plan.module,solution:plan.sol,sunAngle});
     } else {
       const R=cyc.D/2,r=cyc.d/2,N=cyc.ratio+1;
       const base={R,r,N,e:cyc.e,face:cyc.face,bore:cyc.bore,diaClearance:cl.dia,boreClearance:cl.bore,steps:quality>10?540:300};
@@ -790,7 +809,15 @@
   document.getElementById('reset').onclick=resetView;
   document.getElementById('spin').onclick=function(){spin=!spin;this.style.background=spin?'var(--olive)':'transparent';
     this.style.color=spin?'#f4efe2':'';loop();};
-  function loop(){if(!spin){if(raf)cancelAnimationFrame(raf);return;}rotY+=0.012;draw();raf=requestAnimationFrame(loop);}
+  function loop(){
+    if(!spin){if(raf)cancelAnimationFrame(raf);return;}
+    if(mode==='planetary'&&plan.part==='assembly'&&planParts){
+      sunAngle+=0.045;                                   // drive the sun; ring fixed, planets follow
+      mesh=G.assemblePlanetary(planParts,{module:plan.module,solution:plan.sol,sunAngle});
+      draw();
+    } else { rotY+=0.012; draw(); }                       // other views: orbit the camera
+    raf=requestAnimationFrame(loop);
+  }
 
   // downloads
   function tol(){return {bore:parseFloat(document.getElementById('tolBore').value)||0,dia:parseFloat(document.getElementById('tolDia').value)||0};}
