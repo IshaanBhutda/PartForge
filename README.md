@@ -11,7 +11,7 @@ I built it because I kept rewriting the same gear equations in MATLAB every time
 wanted to print something, and I wanted a faster way to go from "I need a 19:1 reducer"
 to "here's the STL on the print bed." If it saves you that same hassle, brilliant.
 
-👉 **[Try it live](#)** — *(once you turn on GitHub Pages, paste your link here)*
+👉 **[Try it live](#)
 
 ---
 
