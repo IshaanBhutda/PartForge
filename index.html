@@ -590,7 +590,8 @@
   }
 
   const API = { buildGear, buildRing, buildPlanetary, assemblePlanetary, solvePlanetary,
-    buildCycloidalDisc, cycloidProfile, cycDiscProfile, cycValidity, cycMaxPinR, cycEccRange, cycHoleRanges, toSTL, merge, translate, rotZ };
+    buildCycloidalDisc, cycloidProfile, cycDiscProfile, cycValidity, cycMaxPinR, cycEccRange, cycHoleRanges, toSTL, merge, translate, rotZ,
+    _gearProfile: gearProfile, _twistFor: twistFor };
   root.PARTGEN = API;
 })(typeof window !== 'undefined' ? window : globalThis);
 
@@ -693,7 +694,7 @@
     } else if(mode==='planetary'){
       if(!plan.sol)plan.sol=G.solvePlanetary(plan.target,plan.N);
       const asm=plan.part==='assembly';
-      const dia=asm?Math.max(cl.dia,0.12*plan.module):cl.dia;   // backlash so assembled teeth never overlap
+      const dia=asm?Math.max(cl.dia,0.08*plan.module):cl.dia;   // small backlash so assembled teeth mesh snugly without overlap
       const parts=G.buildPlanetary({module:plan.module,solution:plan.sol,face:plan.face,kind:plan.kind,
         helixAngle:plan.helixAngle,pressureAngle:plan.pressureAngle,sunBore:plan.sunBore,planetBore:plan.planetBore,
         ptsPerFlank:quality,diaClearance:dia,boreClearance:cl.bore});
@@ -790,6 +791,7 @@
       let nx=(py[b]-py[a])*(pz[c]-pz[a])-(pz[b]-pz[a])*(py[c]-py[a]);
       let ny=(pz[b]-pz[a])*(px[c]-px[a])-(px[b]-px[a])*(pz[c]-pz[a]);
       let nz=(px[b]-px[a])*(py[c]-py[a])-(py[b]-py[a])*(px[c]-px[a]);
+      if(nz<0)continue;                                  // back-face cull (meshes are closed & outward-oriented)
       const nl=Math.hypot(nx,ny,nz)||1;let br=0.30+0.78*Math.abs((nx*light[0]+ny*light[1]+nz*light[2])/nl);
       if(br>1)br=1;tris.push([(pz[a]+pz[b]+pz[c])/3,a,b,c,br]);}
     tris.sort((p,q)=>p[0]-q[0]);
