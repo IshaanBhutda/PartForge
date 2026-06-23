@@ -237,7 +237,7 @@
   // ---- planetary ratio solver (ring fixed, sun in, carrier out: i = 1 + R/S) ----
   function solvePlanetary(target, N, opts) {
     opts = opts || {};
-    const sMin = opts.sMin || 10, sMax = opts.sMax || 40, pMin = opts.pMin || 9, pMax = opts.pMax || 60;
+    const sMin = opts.sMin || 9, sMax = opts.sMax || 60, pMin = opts.pMin || 8, pMax = opts.pMax || 120;
     let best = null;
     for (let S = sMin; S <= sMax; S++) {
       for (let P = pMin; P <= pMax; P++) {
@@ -249,6 +249,29 @@
         const err = Math.abs(ratio - target);
         const score = err * 1000 + (S + P) * 0.01;             // prefer accuracy, then compactness
         if (!best || score < best.score) best = { S, P, R, N, ratio: +ratio.toFixed(4), err: +err.toFixed(4), score };
+      }
+    }
+    return best;
+  }
+
+  // Self-optimizing: search planet count AND tooth counts to best match the target
+  // ratio. Among equally-accurate options it prefers more planets (load sharing),
+  // then a compact size. Returns the achieved design (single stage).
+  function solvePlanetaryAuto(target, opts) {
+    opts = opts || {};
+    const sMin = opts.sMin || 9, sMax = opts.sMax || 60, pMin = opts.pMin || 8, pMax = opts.pMax || 120;
+    const nMin = opts.nMin || 3, nMax = opts.nMax || 6;
+    let best = null;
+    for (let N = nMin; N <= nMax; N++) {
+      for (let S = sMin; S <= sMax; S++) {
+        for (let P = pMin; P <= pMax; P++) {
+          const R = S + 2 * P;
+          if ((S + R) % N !== 0) continue;
+          if (!((S + P) * Math.sin(Math.PI / N) > (P + 2.2))) continue;
+          const ratio = 1 + R / S, err = Math.abs(ratio - target);
+          const score = err * 1000 - N * 0.4 + (S + P) * 0.003;   // accuracy, then more planets, then compact
+          if (!best || score < best.score) best = { S, P, R, N, ratio: +ratio.toFixed(4), err: +err.toFixed(4), score };
+        }
       }
     }
     return best;
@@ -670,6 +693,7 @@
   }
 
   const API = { buildGear, buildRing, buildPlanetary, assemblePlanetary, solvePlanetary,
+    solvePlanetaryAuto,
     buildCycloidalDisc, cycloidProfile, cycDiscProfile, cycValidity, cycMaxPinR, cycEccRange, cycHoleRanges, toSTL, toSTEP, merge, translate, rotZ,
     _gearProfile: gearProfile, _twistFor: twistFor };
   root.PARTGEN = API;
@@ -687,10 +711,12 @@
 
   let mode='gear';
   const gear={kind:'spur',teeth:20,module:2,pressureAngle:20,face:10,bore:6,helixAngle:20};
-  const plan={kind:'spur',target:5,N:3,module:2,pressureAngle:20,face:10,helixAngle:15,sunBore:5,planetBore:4,part:'assembly',sol:null};
+  const plan={kind:'spur',target:5,planets:0,inputTorque:10,inputRpm:1000,module:2,maxOD:0,pressureAngle:20,face:10,helixAngle:15,sunBore:5,planetBore:4,part:'assembly',sol:null};
+  const EFF=0.80;   // planetary efficiency (standard estimate)
   const cyc={ratio:19,D:80,d:8,e:1.5,face:10,bore:12,outCount:6,outCircleD:24,outHoleD:4,holesOK:true};
   let mesh=null,info=null,cycValid=true,cycInputs={};
   let planParts=null,sunAngle=0;   // cached planetary parts + animation state
+  let planRefs={};                 // references to planetary inputs needing live hints / enable-disable
 
   const panel=document.getElementById('panel');
   function field(label,val,step,on){const r=document.createElement('div');r.className='row';
@@ -705,6 +731,15 @@
     r.appendChild(l);r.appendChild(i);
     const h=document.createElement('div');h.style.cssText='font-size:10.5px;color:var(--ink-soft);margin:-4px 0 6px;text-align:right';
     wrap.appendChild(r);wrap.appendChild(h);cycInputs[key]={input:i,hint:h};return wrap;}
+  // field with a small live hint line underneath; returns {wrap,input,hint}
+  function fieldH(label,val,step,on){const wrap=document.createElement('div');
+    const r=document.createElement('div');r.className='row';
+    const l=document.createElement('label');l.textContent=label;
+    const i=document.createElement('input');i.type='number';i.step=step;i.value=val;
+    i.oninput=()=>{const v=parseFloat(i.value);if(!isNaN(v))on(v);};
+    r.appendChild(l);r.appendChild(i);
+    const h=document.createElement('div');h.style.cssText='font-size:10.5px;color:var(--ink-soft);margin:-4px 0 6px;text-align:right';
+    wrap.appendChild(r);wrap.appendChild(h);return {wrap,input:i,hint:h};}
   function typeRow(types,current,on){const wrap=document.createElement('div');wrap.className='types'+(types.length===2?' two':'');
     types.forEach(t=>{const b=document.createElement('button');b.className='type'+(t.k===current?' active':'');
       b.innerHTML='<b>'+ICON[t.k]+'</b>'+t.n;b.onclick=()=>on(t.k);wrap.appendChild(b);});return wrap;}
@@ -730,9 +765,16 @@
       panel.appendChild(lab('Gear type'));
       panel.appendChild(typeRow(PTYPES,plan.kind,k=>{plan.kind=k;buildPanel();regen();}));
       panel.appendChild(lab('Design target'));
-      panel.appendChild(field('Gear ratio (i)',plan.target,0.1,v=>{plan.target=v;solveAndRegen();}));
-      panel.appendChild(field('Planets (N)',plan.N,1,v=>{plan.N=Math.max(2,Math.round(v));solveAndRegen();}));
-      panel.appendChild(field('Module (mm)',plan.module,0.1,v=>{plan.module=v;regen();}));
+      panel.appendChild(field('Gear ratio (i)',plan.target,0.5,v=>{plan.target=v;solveAndRegen();}));
+      const pl=fieldH('Planets (0 = auto)',plan.planets,1,v=>{plan.planets=Math.max(0,Math.round(v));solveAndRegen();});
+      const od=fieldH('Max outer Ø (0 = off)',plan.maxOD,1,v=>{plan.maxOD=Math.max(0,v);regen();});
+      panel.appendChild(pl.wrap); panel.appendChild(od.wrap);
+      panel.appendChild(field('Input torque (kg·cm)',plan.inputTorque,1,v=>{plan.inputTorque=Math.max(0,v);showInfo();draw();}));
+      panel.appendChild(field('Input speed (rpm)',plan.inputRpm,10,v=>{plan.inputRpm=Math.max(0,v);showInfo();draw();}));
+      panel.appendChild(lab('Geometry'));
+      const md=fieldH('Module (mm)',plan.module,0.1,v=>{plan.module=v;regen();});
+      panel.appendChild(md.wrap);
+      planRefs={planets:pl,od:od,mod:md};
       panel.appendChild(field('Pressure angle°',plan.pressureAngle,0.5,v=>{plan.pressureAngle=v;regen();}));
       panel.appendChild(field('Face width (mm)',plan.face,0.5,v=>{plan.face=v;regen();}));
       panel.appendChild(field('Sun bore Ø',plan.sunBore,0.5,v=>{plan.sunBore=v;regen();}));
@@ -768,15 +810,16 @@
       return G.buildGear({kind:gear.kind,teeth:gear.teeth,module:gear.module,pressureAngle:gear.pressureAngle,
         face:gear.face,bore:gear.bore,helixAngle:gear.helixAngle,ptsPerFlank:quality,diaClearance:cl.dia,boreClearance:cl.bore});
     } else if(mode==='planetary'){
-      if(!plan.sol)plan.sol=G.solvePlanetary(plan.target,plan.N);
+      if(!plan.sol)plan.sol=solvePlan();
+      const mm=effMod();
       const asm=plan.part==='assembly';
-      const dia=asm?Math.max(cl.dia,0.08*plan.module):cl.dia;   // small backlash so assembled teeth mesh snugly without overlap
-      const parts=G.buildPlanetary({module:plan.module,solution:plan.sol,face:plan.face,kind:plan.kind,
+      const dia=asm?Math.max(cl.dia,0.08*mm):cl.dia;   // small backlash so assembled teeth mesh snugly without overlap
+      const parts=G.buildPlanetary({module:mm,solution:plan.sol,face:plan.face,kind:plan.kind,
         helixAngle:plan.helixAngle,pressureAngle:plan.pressureAngle,sunBore:plan.sunBore,planetBore:plan.planetBore,
         ptsPerFlank:quality,diaClearance:dia,boreClearance:cl.bore});
       if(plan.part==='sun')return parts.sun;if(plan.part==='planet')return parts.planet;if(plan.part==='ring')return parts.ring;
       planParts=parts;
-      return G.assemblePlanetary(parts,{module:plan.module,solution:plan.sol,sunAngle});
+      return G.assemblePlanetary(parts,{module:mm,solution:plan.sol,sunAngle});
     } else {
       const R=cyc.D/2,r=cyc.d/2,N=cyc.ratio+1;
       const base={R,r,N,e:cyc.e,face:cyc.face,bore:cyc.bore,diaClearance:cl.dia,boreClearance:cl.bore,steps:quality>10?540:300};
@@ -784,7 +827,10 @@
       return G.buildCycloidalDisc(base);
     }
   }
-  function solveAndRegen(){plan.sol=G.solvePlanetary(plan.target,plan.N);regen();}
+  function solvePlan(){return (plan.planets>=2?G.solvePlanetary(plan.target,plan.planets):null)||G.solvePlanetaryAuto(plan.target);}
+  // effective module: if a max outer Ø is set, auto-size the module so the gearbox fits (overall Ø = module*(R+6.5))
+  function effMod(){return (plan.maxOD>0&&plan.sol)?(plan.maxOD/(plan.sol.R+6.5)):plan.module;}
+  function solveAndRegen(){plan.sol=solvePlan();regen();}
 
   function clearStage(){const W=cv.width,H=cv.height,cx=W/2,cy=H/2;
     const bg=ctx.createRadialGradient(cx,cy*0.8,10,cx,cy,Math.max(W,H)*0.75);
@@ -853,12 +899,26 @@
       if(gear.kind!=='spur')rows.push(['Helix angle',gear.helixAngle+'°']);
       el.innerHTML=specs(rows);
     } else if(mode==='planetary'){const s=plan.sol;
-      const cd=plan.module*(s.S+s.P)/2, overall=plan.module*(s.R+6.5);
-      const rows=[{h:s.ratio+' : 1  '+(s.err>0.0005?'(≈ target '+plan.target+')':'(exact)')},
-        ['Sun teeth',s.S],['Planet teeth',s.P+'  ×'+s.N],['Ring teeth',s.R],
-        ['Module',plan.module+' mm'],['Centre distance',cd.toFixed(2)+' mm'],
-        ['Sun pitch Ø',(plan.module*s.S)+' mm'],['Ring pitch Ø',(plan.module*s.R)+' mm'],
-        ['Overall Ø ≈',overall.toFixed(0)+' mm'],['Face width',plan.face+' mm']];
+      const mm=effMod(), cd=mm*(s.S+s.P)/2, overall=mm*(s.R+6.5);
+      // live hints + lock the module field when it is auto-driven by Max outer Ø
+      if(planRefs.planets)planRefs.planets.hint.textContent=plan.planets>=2?'fixed count':('auto → '+s.N+' planets');
+      if(planRefs.od)planRefs.od.hint.textContent=plan.maxOD>0?('auto-sets module → '+mm.toFixed(3)+' mm'):'auto-sets the module to fit';
+      if(planRefs.mod){const dis=plan.maxOD>0,inp=planRefs.mod.input;
+        inp.disabled=dis;inp.style.opacity=dis?0.5:1;inp.value=dis?mm.toFixed(3):plan.module;
+        planRefs.mod.hint.textContent=dis?'auto-fit (Max outer Ø set)':'';}
+      const reached=s.err<0.01;
+      const outTorque=(plan.inputTorque*s.ratio*EFF/100);     // kg·cm in -> kg·m out (÷100)
+      const outRpm=plan.inputRpm/s.ratio;
+      const head=reached?(s.ratio+' : 1  (exact)'):(s.ratio+' : 1  ⚠ max — target '+plan.target+' needs 2 stages');
+      const rows=[{h:head},
+        ['Planets',s.N+(plan.planets>=2?'':'  (auto)')],['Sun teeth',s.S],['Planet teeth',s.P],['Ring teeth',s.R],
+        ['Module',(plan.maxOD>0?mm.toFixed(3)+' mm (fit)':mm+' mm')],['Centre distance',cd.toFixed(2)+' mm'],
+        ['Overall Ø ≈',overall.toFixed(1)+' mm'+(plan.maxOD>0?' (≤ limit)':'')],['Face width',plan.face+' mm'],
+        {h:'Drive (η ~'+(EFF*100)+'%)'},
+        ['Input torque',plan.inputTorque+' kg·cm'],
+        ['Output torque',outTorque.toFixed(3)+' kg·m'],
+        ['Input speed',plan.inputRpm+' rpm'],
+        ['Output speed',outRpm.toFixed(1)+' rpm']];
       if(plan.kind!=='spur')rows.push(['Helix angle',plan.helixAngle+'° (sun opp.)']);
       rows.push(['Exporting',cap(plan.part)]);
       el.innerHTML=specs(rows);
@@ -896,6 +956,13 @@
       ctx.beginPath();ctx.moveTo(cx+px[a]*fit,cy-py[a]*fit);ctx.lineTo(cx+px[b]*fit,cy-py[b]*fit);ctx.lineTo(cx+px[c]*fit,cy-py[c]*fit);ctx.closePath();
       const r=base[0]*br|0,g=base[1]*br|0,bl=base[2]*br|0;ctx.fillStyle='rgb('+r+','+g+','+bl+')';
       if(doStroke){ctx.strokeStyle=ctx.fillStyle;ctx.lineWidth=0.6;ctx.stroke();}ctx.fill();}
+    if(mode==='planetary'&&plan.sol){
+      const s=plan.sol, outT=(plan.inputTorque*s.ratio*EFF/100).toFixed(3), outRpm=(plan.inputRpm/s.ratio).toFixed(0), fs=Math.round(Math.min(W,H)*0.034);
+      ctx.fillStyle='#7f5539';ctx.font='600 '+fs+'px Georgia,serif';ctx.textBaseline='top';
+      ctx.fillText(s.ratio+' : 1   ·   τ out ≈ '+outT+' kg·m', fs*0.6, fs*0.6);
+      ctx.fillStyle='rgba(107,86,69,0.85)';ctx.font=Math.round(fs*0.62)+'px Georgia,serif';
+      ctx.fillText(outRpm+' rpm out  ·  '+s.N+' planets  ·  ring fixed  ·  η '+(EFF*100)+'%', fs*0.6, fs*0.6+fs*1.2);
+    }
   }
   cv.addEventListener('pointerdown',e=>{drag=true;lx=e.clientX;ly=e.clientY;cv.setPointerCapture(e.pointerId);});
   cv.addEventListener('pointermove',e=>{if(!drag)return;rotY+=(e.clientX-lx)*0.01;rotX+=(e.clientY-ly)*0.01;
@@ -939,7 +1006,7 @@
   document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
     document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===t));
     mode=t.dataset.mode;
-    if(mode==='planetary'&&!plan.sol)plan.sol=G.solvePlanetary(plan.target,plan.N);
+    if(mode==='planetary'&&!plan.sol)plan.sol=solvePlan();
     buildPanel();regen();resetView();});
 
   buildPanel();
