@@ -50,6 +50,22 @@
   .specs .hd:first-child{border-top:none;margin-top:0;padding-top:0}
   .fmt{width:100%;padding:8px 9px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);
     color:var(--ink);font:inherit;font-size:12.5px;margin-top:12px}
+  .warn{margin-top:8px;padding:8px 11px;border-radius:8px;background:rgba(181,83,47,.12);border:1px solid #b5532f;color:#8f3d22;font-size:12px}
+  .theory{display:none;position:absolute;inset:0;overflow-y:auto;padding:26px 32px;background:linear-gradient(180deg,#f3e9dd,#e8dccd)}
+  body.theory-mode .theory{display:block}
+  body.theory-mode #cv,body.theory-mode .hint{display:none}
+  body.theory-mode #panel,body.theory-mode .tolbox,body.theory-mode .fmt,body.theory-mode .dlrow,body.theory-mode .viewbtns{display:none}
+  .theory h1{color:var(--clay-d);font-size:22px;margin:0 0 2px}
+  .theory h2{color:var(--clay-d);font-size:18px;margin:22px 0 6px;border-top:1px solid var(--line);padding-top:16px}
+  .theory h3{color:var(--olive-d);font-size:13.5px;margin:14px 0 4px;letter-spacing:1px;text-transform:uppercase}
+  .theory p,.theory li{font-size:13.5px;line-height:1.65;max-width:780px;color:var(--ink)}
+  .theory ul{margin:6px 0;padding-left:20px} .theory li{margin:3px 0}
+  .theory .lead{color:var(--ink-soft);max-width:780px;font-size:13px}
+  .theory .eq{background:rgba(156,102,68,.10);border-left:3px solid var(--clay);padding:7px 13px;margin:9px 0;max-width:780px;font-size:13.5px}
+  .theory pre{background:#2c2117;color:#ecdfca;padding:14px 16px;border-radius:9px;overflow-x:auto;font-size:12px;line-height:1.55;max-width:780px;
+    font-family:ui-monospace,Menlo,Consolas,monospace;white-space:pre}
+  .theory code{font-family:ui-monospace,Menlo,Consolas,monospace;background:rgba(156,102,68,.12);padding:1px 4px;border-radius:4px;font-size:12.5px}
+  .theory b{color:var(--clay-d)}
   .seg{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px}
   .seg button{flex:1;min-width:60px;padding:7px 4px;border:1px solid var(--line);border-radius:8px;
     background:var(--panel2);color:var(--ink-soft);font-size:12px}
@@ -77,9 +93,10 @@
     <div class="byline">Designed by <a href="https://www.linkedin.com/in/ishaanbhutda/" target="_blank" rel="noopener">Ishaan Bhutda</a></div>
 
     <div class="tabs">
-      <div class="tab active" data-mode="gear">Single Gear</div>
+      <div class="tab active" data-mode="gear">Gear</div>
       <div class="tab" data-mode="planetary">Planetary</div>
       <div class="tab" data-mode="cycloidal">Cycloidal</div>
+      <div class="tab" data-mode="theory">Theory</div>
     </div>
 
     <div id="panel"></div>
@@ -107,6 +124,91 @@
   <main class="stage">
     <canvas id="cv"></canvas>
     <div class="hint">drag to orbit · scroll to zoom</div>
+    <div id="theory" class="theory">
+      <h1>How PartForge works</h1>
+      <p class="lead">A quick guide to each tab and the maths behind it. Everything is generated live in your
+      browser from these equations — drag to orbit, then export STL (mesh) or STEP (solid).</p>
+
+      <h2>⚙ Gear tab</h2>
+      <h3>Using it</h3>
+      <p>Pick a tooth form — <b>spur</b> (straight), <b>helical</b> (angled, quieter, takes more load), or
+      <b>herringbone</b> (two opposing helices, no axial thrust). Set the number of teeth, the module, pressure
+      angle, face width and bore. The 3D view updates as you type; the panel shows every key diameter.</p>
+      <h3>The maths</h3>
+      <p>A gear is defined by its <b>module</b> <code>m</code> (tooth size) and <b>tooth count</b> <code>z</code>.
+      The teeth are true <b>involutes</b> of a base circle — the curve a taut string traces as it unwinds from
+      that circle — which is what lets two gears transmit motion at a constant ratio.</p>
+      <div class="eq">Pitch Ø: <b>d = m·z</b> &nbsp;·&nbsp; Base Ø: <b>d<sub>b</sub> = d·cos α</b> &nbsp;·&nbsp;
+      Outside Ø: <b>m(z + 2)</b> &nbsp;·&nbsp; Root Ø: <b>m(z − 2.5)</b></div>
+      <p>α is the pressure angle (usually 20°). Addendum (tip height) = <code>m</code>, dedendum (root depth)
+      = <code>1.25 m</code>. Helical/herringbone simply twist this profile along the face; the twist rate is
+      <code>tan(β)/r</code> where β is the helix angle.</p>
+
+      <h2>🪐 Planetary tab</h2>
+      <h3>Using it</h3>
+      <p>You give a <b>target ratio</b> and PartForge sizes the gear set for you. Leave <b>Planets</b> at 0 and it
+      auto-picks the count (more planets share load better); or fix a count and it optimises the teeth for it.
+      Set a <b>Max outer Ø</b> and it auto-sizes the module so the whole unit fits that diameter. Enter input
+      <b>torque</b> (kg·cm) and <b>speed</b> (rpm) and it reports the output. Hit <b>Spin</b> to watch the sun
+      drive the planets inside the fixed ring.</p>
+      <h3>The maths</h3>
+      <p>Sun (S teeth), planets (P), ring (R). For the planets to sit between sun and ring:</p>
+      <div class="eq">Concentricity: <b>R = S + 2P</b></div>
+      <p>With the ring held fixed and the carrier as output, the reduction is:</p>
+      <div class="eq">Ratio: <b>i = 1 + R / S</b></div>
+      <p>For N equally-spaced planets to actually assemble, and not collide:</p>
+      <div class="eq">Assembly: <b>(S + R) / N</b> must be a whole number &nbsp;·&nbsp;
+      No-collision: <b>(S + P)·sin(π/N) &gt; P + 2.2</b></div>
+      <p>This is why very high ratios need few planets, and why a single stage tops out near ~13:1 — beyond that
+      the tool tells you it needs two stages. Power transmission (≈80% efficiency used here):</p>
+      <div class="eq">Output torque <b>τ<sub>out</sub> = τ<sub>in</sub> · i · η</b> &nbsp;·&nbsp;
+      Output speed <b>n<sub>out</sub> = n<sub>in</sub> / i</b> &nbsp;·&nbsp;
+      Centre distance <b>= m(S + P)/2</b></div>
+
+      <h2>🌀 Cycloidal tab</h2>
+      <h3>Using it</h3>
+      <p>A cycloidal disc gives a big reduction in one compact stage. Set the reduction ratio (= pins − 1), the
+      pin-circle Ø, pin Ø, eccentricity, bore and the output-pin holes. The tool checks the maths live: if your
+      numbers would make the lobes overlap or undercut, it flags <b>invalid geometry</b> and shows the valid range
+      for each value — exactly like SolidWorks rejecting a bad sketch.</p>
+      <h3>The maths</h3>
+      <p>The disc has <b>N − 1 lobes</b> rolling inside <b>N</b> ring pins, so a single stage reduces by
+      <b>N − 1 : 1</b>. The lobe profile is the parametric curve below — this is the exact MATLAB I used, and it's
+      the same equation the tool evaluates:</p>
+      <pre>R = 40;                 % pin-circle radius  (D/2)
+r = 4;                  % pin radius         (d/2)
+Gear_ratio = 19;        % reduction ratio
+N = Gear_ratio + 1;     % number of pins  (disc has N-1 lobes)
+e = 1.5;                % eccentricity
+
+syms t
+x(t) =  R*cos(t) - r*cos(t + atan( sin((N-1)*t) / (cos((N-1)*t) - (R/(N*e))) )) - e*cos(N*t);
+y(t) = -R*sin(t) + r*sin(t + atan( sin((N-1)*t) / (cos((N-1)*t) - (R/(N*e))) )) + e*sin(N*t);
+
+t = linspace(0, 2*pi, 5000);
+plot(x(t), y(t)); axis equal</pre>
+      <p>As <code>t</code> sweeps 0 → 2π, the three terms combine: <code>R·cos t</code> walks around the pin
+      circle, <code>e·cos(N t)</code> adds the N-lobe wobble from the eccentricity, and the <code>atan(…)</code>
+      term offsets each point by the pin radius along the curve normal — that's what turns the path into the
+      true cut profile that rolls against the pins. The result is a smooth disc with N − 1 lobes.</p>
+      <p><b>One subtlety:</b> it uses single-argument <code>atan</code>, not <code>atan2</code>. They differ by π
+      when the denominator goes negative, and that completely changes the curve — PartForge matches the
+      single-argument form exactly so the shape equals your MATLAB plot.</p>
+
+      <h3>Drawing it in SolidWorks (parametric spline)</h3>
+      <p>SolidWorks can draw this curve directly from the equations — no point tables needed:</p>
+      <ul>
+        <li>Start a <b>Sketch</b> on a plane, then <b>Tools → Sketch Entities → Equation Driven Curve</b>.</li>
+        <li>Choose the <b>Parametric</b> type. It asks for <code>x<sub>t</sub></code>, <code>y<sub>t</sub></code>
+        and the range <code>t1</code>, <code>t2</code>.</li>
+        <li>Paste the two expressions for <code>x(t)</code> and <code>y(t)</code> above (with your R, r, N, e as
+        numbers), and set <code>t1 = 0</code>, <code>t2 = 2*pi</code>.</li>
+        <li>SolidWorks renders the lobed profile as a single spline. <b>Extrude</b> it to the disc thickness, then
+        cut the centre bore and the ring of output-pin holes.</li>
+      </ul>
+      <p class="lead">Tip: if SolidWorks reports "the curve is self-intersecting / invalid," your eccentricity or
+      pin radius is too large — reduce them until PartForge shows the geometry as valid, then use those numbers.</p>
+    </div>
   </main>
 
 <!-- ===== geometry engine (tested) ===== -->
@@ -807,15 +909,19 @@
 
   function makeMesh(cl,quality){
     if(mode==='gear'){
+      const maxB=Math.max(0,(gear.teeth-2.5)*gear.module-2);   // bore must clear the root with a wall
+      const bore=Math.min(gear.bore,maxB);
       return G.buildGear({kind:gear.kind,teeth:gear.teeth,module:gear.module,pressureAngle:gear.pressureAngle,
-        face:gear.face,bore:gear.bore,helixAngle:gear.helixAngle,ptsPerFlank:quality,diaClearance:cl.dia,boreClearance:cl.bore});
+        face:gear.face,bore:bore,helixAngle:gear.helixAngle,ptsPerFlank:quality,diaClearance:cl.dia,boreClearance:cl.bore});
     } else if(mode==='planetary'){
       if(!plan.sol)plan.sol=solvePlan();
       const mm=effMod();
       const asm=plan.part==='assembly';
       const dia=asm?Math.max(cl.dia,0.08*mm):cl.dia;   // small backlash so assembled teeth mesh snugly without overlap
+      const maxSunB=Math.max(0,(plan.sol.S-2.5)*mm-2), maxPlB=Math.max(0,(plan.sol.P-2.5)*mm-2);
       const parts=G.buildPlanetary({module:mm,solution:plan.sol,face:plan.face,kind:plan.kind,
-        helixAngle:plan.helixAngle,pressureAngle:plan.pressureAngle,sunBore:plan.sunBore,planetBore:plan.planetBore,
+        helixAngle:plan.helixAngle,pressureAngle:plan.pressureAngle,
+        sunBore:Math.min(plan.sunBore,maxSunB),planetBore:Math.min(plan.planetBore,maxPlB),
         ptsPerFlank:quality,diaClearance:dia,boreClearance:cl.bore});
       if(plan.part==='sun')return parts.sun;if(plan.part==='planet')return parts.planet;if(plan.part==='ring')return parts.ring;
       planParts=parts;
@@ -892,12 +998,16 @@
   function showInfo(){const el=document.getElementById('inf');if(!el)return;
     if(mode==='gear'){
       const rootDia=+((gear.teeth-2*1.25)*gear.module).toFixed(2);
+      const maxBore=+(Math.max(0,(gear.teeth-2.5)*gear.module-2)).toFixed(2);
       const rows=[{h:cap(info.type)},
         ['Teeth',info.teeth],['Module',info.module+' mm'],['Pressure angle',gear.pressureAngle+'°'],
         ['Pitch Ø',info.pitchDia+' mm'],['Outer Ø',info.outerDia+' mm'],['Root Ø',rootDia+' mm'],
-        ['Bore Ø',info.bore+' mm'],['Face width',gear.face+' mm']];
+        ['Bore Ø',info.bore+' mm'],['Max bore Ø',maxBore+' mm'],['Face width',gear.face+' mm']];
       if(gear.kind!=='spur')rows.push(['Helix angle',gear.helixAngle+'°']);
-      el.innerHTML=specs(rows);
+      let html=specs(rows);
+      if(gear.bore>maxBore)html+='<div class="warn">Bore too large for these teeth — clamped to '+maxBore+' mm. Add teeth, raise module, or shrink the bore.</div>';
+      if(gear.teeth<8)html+='<div class="warn">Very low tooth count — real involute teeth would undercut below ~8.</div>';
+      el.innerHTML=html;
     } else if(mode==='planetary'){const s=plan.sol;
       const mm=effMod(), cd=mm*(s.S+s.P)/2, overall=mm*(s.R+6.5);
       // live hints + lock the module field when it is auto-driven by Max outer Ø
@@ -920,8 +1030,13 @@
         ['Input speed',plan.inputRpm+' rpm'],
         ['Output speed',outRpm.toFixed(1)+' rpm']];
       if(plan.kind!=='spur')rows.push(['Helix angle',plan.helixAngle+'° (sun opp.)']);
-      rows.push(['Exporting',cap(plan.part)]);
-      el.innerHTML=specs(rows);
+      const maxSunB=+(Math.max(0,(s.S-2.5)*mm-2)).toFixed(2), maxPlB=+(Math.max(0,(s.P-2.5)*mm-2)).toFixed(2);
+      rows.push(['Max sun bore',maxSunB+' mm'],['Max planet bore',maxPlB+' mm'],['Exporting',cap(plan.part)]);
+      let html=specs(rows);
+      if(plan.sunBore>maxSunB)html+='<div class="warn">Sun bore too large — clamped to '+maxSunB+' mm.</div>';
+      if(plan.planetBore>maxPlB)html+='<div class="warn">Planet bore too large — clamped to '+maxPlB+' mm.</div>';
+      if(mm<0.4)html+='<div class="warn">Max outer Ø is too small for this ratio — module '+mm.toFixed(3)+' mm is impractical. Increase the size or lower the ratio.</div>';
+      el.innerHTML=html;
     }}
   function cap(s){return s.replace(/^./,c=>c.toUpperCase());}
 
@@ -1006,6 +1121,8 @@
   document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
     document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===t));
     mode=t.dataset.mode;
+    if(mode==='theory'){document.body.classList.add('theory-mode');return;}
+    document.body.classList.remove('theory-mode');
     if(mode==='planetary'&&!plan.sol)plan.sol=solvePlan();
     buildPanel();regen();resetView();});
 
