@@ -269,32 +269,29 @@
     return { sun, planet: planet0, ring, sol };
   }
 
-  // Assemble the gearbox with proper tooth clocking so teeth interlock without
-  // overlap. sunAngle (rad) drives the mechanism: ring fixed, carrier (planet
-  // orbit) and planet spin follow real epicyclic kinematics.
+  // Assemble the gearbox. The RING IS STATIONARY. sunAngle (rad) drives the sun;
+  // the carrier (planet orbit) and planet spin follow real epicyclic kinematics so
+  // the gears move *inside* the fixed ring while staying meshed.
   function assemblePlanetary(parts, p) {
     const S = parts.sol.S, P = parts.sol.P, R = parts.sol.R, N = parts.sol.N, m = p.module;
     const rc = m * (S + P) / 2;
-    const sunAngle = p.sunAngle || 0;
-    const aS = sunAngle / TAU;                                  // sun angle, turns
-    const carrier = sunAngle * S / (S + R);                     // planet-orbit angle, rad
-    const PP = (p.planetPhase || 0), RP = (p.ringPhase || 0);   // half-tooth tuning
+    const ts = p.sunAngle || 0;                                 // sun angle (rad)
+    const aS = ts / TAU;                                        // sun angle (turns)
+    const carrier = ts * S / (S + R);                          // planet-orbit angle (rad)
+    const spinRate = S * (P - R) / (P * (S + R));               // planet turns per sun turn
+    const PP = (p.planetPhase || 0), RP = (p.ringPhase || 0);
     const out = [];
-    const sun = clone(parts.sun); rotZ(sun, sunAngle); out.push(sun);
-    const betas = [];
+    const sun = clone(parts.sun); rotZ(sun, ts); out.push(sun);
     for (let k = 0; k < N; k++) {
-      const phi = k * TAU / N + carrier, f = phi / TAU;
-      // planet spin so a sun tooth meets a planet gap along the line of centres
-      const b = (0.5 + 0.5 * P + (P - S) * f + S * aS) / P;     // turns
-      const beta = b * TAU + PP; betas.push(b);
+      const phi = k * TAU / N + carrier;                        // orbital position
+      const b0 = (0.5 + 0.5 * P + (P - S) * (k / N)) / P;       // static mesh clocking (turns)
+      const beta = (b0 + aS * spinRate) * TAU + PP;             // absolute body rotation
       const pl = clone(parts.planet); rotZ(pl, beta);
       translate(pl, rc * Math.cos(phi), rc * Math.sin(phi), 0); out.push(pl);
     }
-    // ring clocked from the planet-0 internal mesh (one ring serves all planets
-    // because the solver enforces (S+R) % N === 0)
-    const f0 = carrier / TAU, b0 = betas[0];
-    const g = (0.5 + (R - P) * f0 + P * b0) / R;                // turns
-    const ring = clone(parts.ring); rotZ(ring, g * TAU + RP); out.push(ring);
+    // ring clocked ONCE (static) and kept fixed for all sun angles
+    const g0 = (1 + 0.5 * P) / R;                               // turns
+    const ring = clone(parts.ring); rotZ(ring, g0 * TAU + RP); out.push(ring);
     return merge.apply(null, out);
   }
 
