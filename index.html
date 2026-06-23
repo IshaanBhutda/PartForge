@@ -44,6 +44,12 @@
   .info{margin-top:12px;padding:11px 12px;border-radius:9px;background:rgba(96,108,56,.10);
     border:1px solid rgba(96,108,56,.30);font-size:12px;color:var(--olive-d)}
   .info b{color:var(--ink)} .info .big{font-size:15px;color:var(--clay-d)}
+  .specs{display:grid;grid-template-columns:1fr auto;gap:3px 12px;margin-top:8px;font-size:12px}
+  .specs .k{color:var(--ink-soft)} .specs .v{color:var(--ink);font-weight:600;text-align:right}
+  .specs .hd{grid-column:1/3;color:var(--clay-d);font-weight:700;margin-top:5px;border-top:1px solid var(--line);padding-top:5px}
+  .specs .hd:first-child{border-top:none;margin-top:0;padding-top:0}
+  .fmt{width:100%;padding:8px 9px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);
+    color:var(--ink);font:inherit;font-size:12.5px;margin-top:12px}
   .seg{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px}
   .seg button{flex:1;min-width:60px;padding:7px 4px;border:1px solid var(--line);border-radius:8px;
     background:var(--panel2);color:var(--ink-soft);font-size:12px}
@@ -69,7 +75,6 @@
   <aside class="sidebar">
     <div class="brand"><h1>PartForge</h1><span>gear bench</span></div>
     <div class="byline">Designed by <a href="https://www.linkedin.com/in/ishaanbhutda/" target="_blank" rel="noopener">Ishaan Bhutda</a></div>
-    <p class="tag" id="tag"></p>
 
     <div class="tabs">
       <div class="tab active" data-mode="gear">Single Gear</div>
@@ -85,19 +90,17 @@
       <div class="row"><label>Tooth / OD clearance</label><input type="number" id="tolDia" step="0.05" value="0.30"></div>
     </div>
 
+    <select class="fmt" id="fmt">
+      <option value="step">Format — STEP (solid, for CAD)</option>
+      <option value="stl">Format — STL (mesh, for slicers)</option>
+    </select>
     <div class="dlrow">
-      <button class="dl dl-stl" id="dlStl">Download STL</button>
-      <button class="dl dl-print" id="dlPrint">3D-print STL</button>
+      <button class="dl dl-stl" id="dlStl">Download</button>
+      <button class="dl dl-print" id="dlPrint">3D-print (+clearance)</button>
     </div>
     <div class="viewbtns">
       <button class="ghost" id="spin" style="flex:1">Spin</button>
       <button class="ghost" id="reset" style="flex:1">Reset view</button>
-    </div>
-
-    <div class="credit">
-      True involute flanks · helical &amp; herringbone twist · internal ring gears · planetary sizing from a
-      target ratio · cycloidal disc from parametric equations. The 3D-print copy enlarges the bore and trims
-      OD/teeth by the clearances above. Exports STL for any slicer or CAD — ask in chat for a precise STEP solid.
     </div>
   </aside>
 
@@ -211,13 +214,10 @@
   function buildGear(p) {
     const prof = gearProfile(p);
     const tw = twistFor(p.kind || 'spur', p.helixAngle, p.face, prof.rp);
-    let inner = null;
+    const holes = [];
     const bore = (p.bore || 0) + (p.bore > 0 ? (p.boreClearance || 0) : 0);
-    if (bore > 0) {
-      const br = bore / 2;
-      inner = prof.pts.map(([x, y]) => { const a = Math.atan2(y, x); return [br * Math.cos(a), br * Math.sin(a)]; });
-    }
-    const mesh = extrudeBetween(prof.pts, inner, { face: p.face, layers: tw.layers, twistFn: tw.fn });
+    if (bore > 0) holes.push(circlePts(bore / 2, 64));
+    const mesh = extrudeMulti(prof.pts, holes, { face: p.face, layers: tw.layers, twistFn: tw.fn });
     mesh.info = { type: (p.kind || 'spur') + ' gear', teeth: p.teeth, module: p.module,
       pitchDia: +(p.module * p.teeth).toFixed(2), outerDia: +(2 * prof.ra).toFixed(2), bore: +bore.toFixed(2) };
     return mesh;
@@ -227,8 +227,8 @@
     const ri = ringInner(p);
     const rim = ri.root + (p.rim || 2 * p.module);          // outer rim radius
     const tw = twistFor(p.kind || 'spur', p.helixAngle, p.face, ri.rp);
-    const outer = ri.inner.map(([x, y]) => { const a = Math.atan2(y, x); return [rim * Math.cos(a), rim * Math.sin(a)]; });
-    const mesh = extrudeBetween(outer, ri.inner, { face: p.face, layers: tw.layers, twistFn: tw.fn });
+    const outer = circlePts(rim, Math.max(72, ri.inner.length));
+    const mesh = extrudeMulti(outer, [ri.inner], { face: p.face, layers: tw.layers, twistFn: tw.fn });
     mesh.info = { type: (p.kind || 'spur') + ' ring gear', teeth: p.teeth, module: p.module,
       pitchDia: +(p.module * p.teeth).toFixed(2), rimDia: +(2 * rim).toFixed(2) };
     return mesh;
@@ -541,20 +541,52 @@
 
   function loopArea2(loop) { let s = 0; for (let i = 0; i < loop.length; i++) { const a = loop[i], b = loop[(i + 1) % loop.length]; s += a[0] * b[1] - b[0] * a[1]; } return s; }
   function ensureWinding(loop, wantCCW) { const ccw = loopArea2(loop) > 0; return ccw === wantCCW ? loop : loop.slice().reverse(); }
+  // drop consecutive duplicate and collinear points so caps (earcut) and walls use identical vertices
+  function cleanLoop(p) {
+    let out = [];
+    for (const cur of p) { const a = out[out.length - 1]; if (!a || Math.hypot(cur[0] - a[0], cur[1] - a[1]) > 1e-7) out.push(cur); }
+    if (out.length > 1 && Math.hypot(out[0][0] - out[out.length - 1][0], out[0][1] - out[out.length - 1][1]) < 1e-7) out.pop();
+    let changed = true;
+    while (changed && out.length > 3) {
+      changed = false;
+      for (let i = 0; i < out.length; i++) {
+        const a = out[(i - 1 + out.length) % out.length], b = out[i], c = out[(i + 1) % out.length];
+        const cross = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+        const len = Math.hypot(c[0] - a[0], c[1] - a[1]) || 1;
+        if (Math.abs(cross) / len < 1e-6) { out.splice(i, 1); changed = true; break; }
+      }
+    }
+    return out;
+  }
 
   // extrude an outer loop with any number of circular holes into a solid (clean caps via earcut)
-  function extrudeMulti(outerIn, holesIn, face) {
-    const outer = ensureWinding(outerIn, true);                 // outer CCW
-    const holes = (holesIn || []).map(h => ensureWinding(h, false)); // holes CW
+  // Extrude an outer loop with any number of holes into a watertight solid, with
+  // optional helical/herringbone twist. Caps are triangulated with earcut (no sliver
+  // triangles), so the result imports cleanly as a CAD solid. opts = {face, layers, twistFn}.
+  function extrudeMulti(outerIn, holesIn, opts) {
+    if (typeof opts === 'number') opts = { face: opts };
+    const face = opts.face, Ln = Math.max(1, opts.layers || 1), tw = opts.twistFn || (() => 0);
+    const outer = cleanLoop(ensureWinding(outerIn, true));       // outer CCW, no dup/collinear
+    const holes = (holesIn || []).map(h => cleanLoop(ensureWinding(h, false))); // holes CW
     const loops = [outer].concat(holes), data = [], holeIndices = []; let count = 0;
     loops.forEach((loop, li) => { if (li > 0) holeIndices.push(count); for (const pt of loop) { data.push(pt[0], pt[1]); count++; } });
-    const tri = earcut(data, holeIndices, 2), m = M(), bot = [], top = [];
-    for (let k = 0; k < count; k++) bot.push(V(m, data[2 * k], data[2 * k + 1], 0));
-    for (let k = 0; k < count; k++) top.push(V(m, data[2 * k], data[2 * k + 1], face));
-    for (let t = 0; t < tri.length; t += 3) { const a = tri[t], b = tri[t + 1], c = tri[t + 2]; T(m, bot[a], bot[c], bot[b]); T(m, top[a], top[b], top[c]); }
-    // outer is CCW and holes are CW, so the same wall winding gives outward normals for all loops
+    const tri = earcut(data, holeIndices, 2), m = M();
+    // vertex grid: one row of vertices per layer (base 2D points rotated by twist & lifted in z)
+    const row = [];
+    for (let layer = 0; layer <= Ln; layer++) {
+      const t = layer / Ln, rot = tw(t), c = Math.cos(rot), s = Math.sin(rot), zc = face * t, r = [];
+      for (let k = 0; k < count; k++) { const x = data[2 * k], y = data[2 * k + 1]; r.push(V(m, x * c - y * s, x * s + y * c, zc)); }
+      row.push(r);
+    }
+    // caps: bottom (reversed -> -z normal) and top (+z normal)
+    for (let i = 0; i < tri.length; i += 3) { const a = tri[i], b = tri[i + 1], c = tri[i + 2];
+      T(m, row[0][a], row[0][c], row[0][b]); T(m, row[Ln][a], row[Ln][b], row[Ln][c]); }
+    // walls (outer CCW + holes CW share the same winding for outward normals)
     let base = 0;
-    loops.forEach((loop) => { const n = loop.length; for (let i = 0; i < n; i++) { const j = (i + 1) % n, A = base + i, B = base + j; Q(m, bot[A], bot[B], top[B], top[A]); } base += n; });
+    loops.forEach((loop) => { const nn = loop.length;
+      for (let layer = 0; layer < Ln; layer++) for (let i = 0; i < nn; i++) { const j = (i + 1) % nn, A = base + i, B = base + j;
+        Q(m, row[layer][A], row[layer][B], row[layer + 1][B], row[layer + 1][A]); }
+      base += nn; });
     return m;
   }
 
@@ -570,10 +602,61 @@
       for (let k = 0; k < Np; k++) { const th = TAU * k / Np, cx = rc * Math.cos(th), cy = rc * Math.sin(th), hole = [];
         for (let i = 0; i < 36; i++) { const a = TAU * i / 36; hole.push([cx + rh * Math.cos(a), cy + rh * Math.sin(a)]); } holes.push(hole); placedPins++; }
     }
-    const mesh = extrudeMulti(outer, holes, p.face);
+    const mesh = extrudeMulti(outer, holes, { face: p.face });
     mesh.info = { type: 'cycloidal disc', ratio: p.N - 1, lobes: p.N - 1, pins: p.N, eccentricity: p.e,
       discDia: +(2 * p.R - 2 * p.e).toFixed(1), outputPins: placedPins, bore: +bore.toFixed(2) };
     return mesh;
+  }
+
+  // ---- STEP (AP214) export: watertight faceted B-rep solid, importable in CAD ----
+  function toSTEP(mesh, name) {
+    name = (name || 'part').replace(/['\\]/g, '');
+    const V = mesh.verts, F = mesh.faces, out = []; let n = 0;
+    const E = (s) => { n++; out.push('#' + n + '=' + s + ';'); return n; };
+    const N = (x) => { let v = +x; if (!isFinite(v)) v = 0; return v.toPrecision(10).replace(/\.?0+($|e)/i, '$1'); };
+    const pid = new Array(V.length);
+    for (let i = 0; i < V.length; i++) pid[i] = E(`CARTESIAN_POINT('',(${N(V[i][0])},${N(V[i][1])},${N(V[i][2])}))`);
+    const faceIds = [];
+    for (const f of F) {
+      const a = V[f[0]], b = V[f[1]], c = V[f[2]];
+      let nx = (b[1] - a[1]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[1] - a[1]);
+      let ny = (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]);
+      let nz = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+      let ln = Math.hypot(nx, ny, nz);
+      if (ln < 1e-9) continue;                          // skip zero-area (sliver) triangles
+      let rx = b[0] - a[0], ry = b[1] - a[1], rz = b[2] - a[2]; let rl = Math.hypot(rx, ry, rz);
+      nx /= ln; ny /= ln; nz /= ln; rx /= rl; ry /= rl; rz /= rl;
+      const loop = E(`POLY_LOOP('',(#${pid[f[0]]},#${pid[f[1]]},#${pid[f[2]]}))`);
+      const bound = E(`FACE_OUTER_BOUND('',#${loop},.T.)`);
+      const dN = E(`DIRECTION('',(${N(nx)},${N(ny)},${N(nz)}))`);
+      const dR = E(`DIRECTION('',(${N(rx)},${N(ry)},${N(rz)}))`);
+      const ax = E(`AXIS2_PLACEMENT_3D('',#${pid[f[0]]},#${dN},#${dR})`);
+      const pl = E(`PLANE('',#${ax})`);
+      faceIds.push(E(`ADVANCED_FACE('',(#${bound}),#${pl},.T.)`));
+    }
+    const shell = E(`CLOSED_SHELL('',(${faceIds.map(i => '#' + i).join(',')}))`);
+    const brep = E(`MANIFOLD_SOLID_BREP('${name}',#${shell})`);
+    const dz = E(`DIRECTION('',(0.,0.,1.))`), dx = E(`DIRECTION('',(1.,0.,0.))`), org = E(`CARTESIAN_POINT('',(0.,0.,0.))`);
+    const ax0 = E(`AXIS2_PLACEMENT_3D('',#${org},#${dz},#${dx})`);
+    const lu = E(`(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT(.MILLI.,.METRE.))`);
+    const au = E(`(NAMED_UNIT(*)PLANE_ANGLE_UNIT()SI_UNIT($,.RADIAN.))`);
+    const su = E(`(NAMED_UNIT(*)SI_UNIT($,.STERADIAN.)SOLID_ANGLE_UNIT())`);
+    const unc = E(`UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(1.E-05),#${lu},'distance_accuracy_value','')`);
+    const ctx = E(`(GEOMETRIC_REPRESENTATION_CONTEXT(3)GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT((#${unc}))GLOBAL_UNIT_ASSIGNED_CONTEXT((#${lu},#${au},#${su}))REPRESENTATION_CONTEXT('',''))`);
+    const absr = E(`ADVANCED_BREP_SHAPE_REPRESENTATION('',(#${brep},#${ax0}),#${ctx})`);
+    const appctx = E(`APPLICATION_CONTEXT('automotive design')`);
+    E(`APPLICATION_PROTOCOL_DEFINITION('international standard','automotive_design',2000,#${appctx})`);
+    const pctx = E(`PRODUCT_CONTEXT('',#${appctx},'mechanical')`);
+    const prod = E(`PRODUCT('${name}','${name}','',(#${pctx}))`);
+    const pdf = E(`PRODUCT_DEFINITION_FORMATION('','',#${prod})`);
+    const pdctx = E(`PRODUCT_DEFINITION_CONTEXT('part definition',#${appctx},'design')`);
+    const pd = E(`PRODUCT_DEFINITION('design','',#${pdf},#${pdctx})`);
+    const pds = E(`PRODUCT_DEFINITION_SHAPE('','',#${pd})`);
+    E(`SHAPE_DEFINITION_REPRESENTATION(#${pds},#${absr})`);
+    const header = `ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('PartForge solid'),'2;1');\n` +
+      `FILE_NAME('${name}.step','${new Date().toISOString()}',(''),(''),'PartForge','PartForge','');\n` +
+      `FILE_SCHEMA(('AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }'));\nENDSEC;\nDATA;\n`;
+    return header + out.join('\n') + '\nENDSEC;\nEND-ISO-10303-21;\n';
   }
 
   function toSTL(mesh, name) {
@@ -590,7 +673,7 @@
   }
 
   const API = { buildGear, buildRing, buildPlanetary, assemblePlanetary, solvePlanetary,
-    buildCycloidalDisc, cycloidProfile, cycDiscProfile, cycValidity, cycMaxPinR, cycEccRange, cycHoleRanges, toSTL, merge, translate, rotZ,
+    buildCycloidalDisc, cycloidProfile, cycDiscProfile, cycValidity, cycMaxPinR, cycEccRange, cycHoleRanges, toSTL, toSTEP, merge, translate, rotZ,
     _gearProfile: gearProfile, _twistFor: twistFor };
   root.PARTGEN = API;
 })(typeof window !== 'undefined' ? window : globalThis);
@@ -611,10 +694,6 @@
   const cyc={ratio:19,D:80,d:8,e:1.5,face:10,bore:12,outCount:6,outCircleD:24,outHoleD:4,holesOK:true};
   let mesh=null,info=null,cycValid=true,cycInputs={};
   let planParts=null,sunAngle=0;   // cached planetary parts + animation state
-
-  const TAGS={gear:'Drag to orbit · scroll to zoom · export STL or a 3D-print copy with fit clearances.',
-    planetary:'Set a target ratio — PartForge sizes the sun, planets & ring (ring fixed, carrier out).',
-    cycloidal:'Cycloidal disc from the parametric equations. Invalid (undercut) inputs are flagged; valid ranges shown.'};
 
   const panel=document.getElementById('panel');
   function field(label,val,step,on){const r=document.createElement('div');r.className='row';
@@ -754,19 +833,39 @@
       if(!v.ok){el.style.background='rgba(181,83,47,.12)';el.style.borderColor='#b5532f';el.style.color='#8f3d22';
         el.innerHTML='<b>✗ Invalid geometry</b><br>'+v.reason;}
       else{el.style.background='';el.style.borderColor='';el.style.color='';
-        let extra=cyc.outCount>0&&!holesOK?'<br><span style="color:#8f3d22">⚠ output pins out of range — holes omitted</span>':'';
-        el.innerHTML='<span class="big">'+cyc.ratio+' : 1</span> &nbsp;<b>✓ valid</b><br>'+
-          'pins '+N+' · lobes '+cyc.ratio+' · disc Ø '+(2*v.rmax).toFixed(1)+' mm'+
-          (cyc.outCount>0&&holesOK?'<br>'+cyc.outCount+' output pins Ø'+cyc.outHoleD+' on Ø'+cyc.outCircleD+' circle':'')+extra;}
+        const rows=[{h:cyc.ratio+' : 1   ✓ valid'},
+          ['Pins',N],['Lobes',cyc.ratio],['Eccentricity',cyc.e+' mm'],
+          ['Disc Ø',(2*v.rmax).toFixed(1)+' mm'],['Pin-circle Ø',cyc.D+' mm'],['Pin Ø',cyc.d+' mm'],
+          ['Centre bore Ø',cyc.bore+' mm'],
+          ['Output pins',(cyc.outCount>0&&holesOK)?(cyc.outCount+' × Ø'+cyc.outHoleD+' on Ø'+cyc.outCircleD):(cyc.outCount>0?'out of range ⚠':'none')],
+          ['Face width',cyc.face+' mm']];
+        el.innerHTML=specs(rows);}
     }
   }
 
-  function showInfo(){const el=document.getElementById('inf');if(!el)return;let html='';
-    if(mode==='gear'){html='<b>'+cap(info.type)+'</b><br>pitch Ø '+info.pitchDia+' · outer Ø '+info.outerDia+' · bore Ø '+info.bore+' mm';}
-    else if(mode==='planetary'){const s=plan.sol;
-      html='<span class="big">'+s.ratio+' : 1</span> '+(s.err>0.0005?'(target '+plan.target+', Δ '+s.err+')':'(exact)')+'<br>'+
-        'Sun <b>'+s.S+'T</b> · Planet <b>'+s.P+'T</b> ×'+s.N+' · Ring <b>'+s.R+'T</b><br>module '+plan.module+' · R = S+2P ✓';}
-    el.innerHTML=html;}
+  function specs(rows){return '<div class="specs">'+rows.map(r=>r.h!==undefined
+    ?('<div class="hd">'+r.h+'</div>')
+    :('<span class="k">'+r[0]+'</span><span class="v">'+r[1]+'</span>')).join('')+'</div>';}
+  function showInfo(){const el=document.getElementById('inf');if(!el)return;
+    if(mode==='gear'){
+      const rootDia=+((gear.teeth-2*1.25)*gear.module).toFixed(2);
+      const rows=[{h:cap(info.type)},
+        ['Teeth',info.teeth],['Module',info.module+' mm'],['Pressure angle',gear.pressureAngle+'°'],
+        ['Pitch Ø',info.pitchDia+' mm'],['Outer Ø',info.outerDia+' mm'],['Root Ø',rootDia+' mm'],
+        ['Bore Ø',info.bore+' mm'],['Face width',gear.face+' mm']];
+      if(gear.kind!=='spur')rows.push(['Helix angle',gear.helixAngle+'°']);
+      el.innerHTML=specs(rows);
+    } else if(mode==='planetary'){const s=plan.sol;
+      const cd=plan.module*(s.S+s.P)/2, overall=plan.module*(s.R+6.5);
+      const rows=[{h:s.ratio+' : 1  '+(s.err>0.0005?'(≈ target '+plan.target+')':'(exact)')},
+        ['Sun teeth',s.S],['Planet teeth',s.P+'  ×'+s.N],['Ring teeth',s.R],
+        ['Module',plan.module+' mm'],['Centre distance',cd.toFixed(2)+' mm'],
+        ['Sun pitch Ø',(plan.module*s.S)+' mm'],['Ring pitch Ø',(plan.module*s.R)+' mm'],
+        ['Overall Ø ≈',overall.toFixed(0)+' mm'],['Face width',plan.face+' mm']];
+      if(plan.kind!=='spur')rows.push(['Helix angle',plan.helixAngle+'° (sun opp.)']);
+      rows.push(['Exporting',cap(plan.part)]);
+      el.innerHTML=specs(rows);
+    }}
   function cap(s){return s.replace(/^./,c=>c.toUpperCase());}
 
   // renderer
@@ -814,7 +913,7 @@
   function loop(){
     if(!spin){if(raf)cancelAnimationFrame(raf);return;}
     if(mode==='planetary'&&plan.part==='assembly'&&planParts){
-      sunAngle+=0.045;                                   // drive the sun; ring fixed, planets follow
+      sunAngle-=0.045;                                   // drive the sun; ring fixed, planets follow
       mesh=G.assemblePlanetary(planParts,{module:plan.module,solution:plan.sol,sunAngle});
       draw();
     } else { rotY+=0.012; draw(); }                       // other views: orbit the camera
@@ -823,27 +922,29 @@
 
   // downloads
   function tol(){return {bore:parseFloat(document.getElementById('tolBore').value)||0,dia:parseFloat(document.getElementById('tolDia').value)||0};}
-  function fname(printed){let base;
+  function fname(printed,ext){let base;
     if(mode==='gear')base=gear.kind+'_z'+gear.teeth+'_m'+gear.module;
     else if(mode==='planetary')base='planetary_'+plan.sol.ratio.toFixed(2).replace('.','p')+'to1_'+plan.part;
     else base='cycloidal_'+cyc.ratio+'to1_disc';
-    return 'partforge_'+base+(printed?'_print':'')+'.stl';}
+    return 'partforge_'+base+(printed?'_print':'')+'.'+ext;}
   function download(printed){
     if(mode==='cycloidal'&&!cycValid){alert('Invalid geometry — adjust the parameters (see the red ranges) before exporting.');return;}
+    const fmt=document.getElementById('fmt').value;
     const cl=printed?tol():{dia:0,bore:0};const m=makeMesh(cl,14);
-    const blob=new Blob([G.toSTL(m,mode)],{type:'model/stl'});const url=URL.createObjectURL(blob),a=document.createElement('a');
-    a.href=url;a.download=fname(printed).replace(/\s+/g,'');a.click();setTimeout(()=>URL.revokeObjectURL(url),1500);}
+    const data=fmt==='step'?G.toSTEP(m,mode):G.toSTL(m,mode);
+    const blob=new Blob([data],{type:fmt==='step'?'application/step':'model/stl'});
+    const url=URL.createObjectURL(blob),a=document.createElement('a');
+    a.href=url;a.download=fname(printed,fmt).replace(/\s+/g,'');a.click();setTimeout(()=>URL.revokeObjectURL(url),1500);}
   document.getElementById('dlStl').onclick=()=>download(false);
   document.getElementById('dlPrint').onclick=()=>download(true);
 
   // tabs
   document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
     document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===t));
-    mode=t.dataset.mode;document.getElementById('tag').textContent=TAGS[mode];
+    mode=t.dataset.mode;
     if(mode==='planetary'&&!plan.sol)plan.sol=G.solvePlanetary(plan.target,plan.N);
     buildPanel();regen();resetView();});
 
-  document.getElementById('tag').textContent=TAGS.gear;
   buildPanel();
   requestAnimationFrame(()=>{resize();regen();resetView();});
 })();
